@@ -1,0 +1,44 @@
+# Query: react-router
+# ContextLines: 1
+
+9개 결과 - 8 파일
+
+src\App.tsx:
+  1  import { useEffect, useState } from 'react';
+  2: import { Navigate, Route, Routes } from 'react-router-dom';
+  3  import './styles/app.css';
+
+src\main.tsx:
+  2  import ReactDOM from 'react-dom/client';
+  3: import { BrowserRouter } from 'react-router';
+  4  import App from './App';
+
+src\components\AppLayout.tsx:
+  1: import { Outlet } from 'react-router-dom';
+  2  import BottomNav from './BottomNav';
+
+src\components\BottomNav.tsx:
+   1: import { Link, useLocation } from 'react-router-dom';
+   2  
+
+  60  export default BottomNav;
+  61: import { Link, useLocation } from 'react-router-dom';
+  62  
+
+src\pages\PlantDetailPage.tsx:
+  1: import { Link, useParams } from 'react-router-dom';
+  2  import SelectedPlantDetail from '../components/SelectedPlantDetail';
+
+src\pages\PlantQuestionsPage.tsx:
+  1: import { Link, useParams } from 'react-router-dom';
+  2  import QuestionSection from '../components/QuestionSection';
+
+src\pages\PlantRecordPage.tsx:
+  1  import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+  2: import { Link, useNavigate, useParams } from 'react-router-dom';
+  3  import RecordForm from '../components/RecordForm';
+
+src\pages\PlantRegisterPage.tsx:
+  1  import { useState } from 'react';
+  2: import { useNavigate } from 'react-router-dom';
+  3  import PlantRegisterForm from '../components/PlantRegisterForm';

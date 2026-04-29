@@ -1,0 +1,423 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-width: 320px;
+  width: 100%;
+}
+
+body {
+  background: #f7f8fc;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background-color: #f7f8fc;
+  padding: 24px 16px 40px;
+}
+
+.app-container {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.app-title {
+  font-size: 42px;
+  margin: 0 0 12px;
+  color: #2f3a4a;
+}
+
+.app-subtitle {
+  font-size: 22px;
+  color: #5f6b7a;
+  margin: 0;
+}
+
+.section-card {
+  background-color: #ffffff;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  margin-bottom: 24px;
+}
+
+.section-title {
+  font-size: 28px;
+  margin: 0 0 16px;
+  color: #2f3a4a;
+}
+
+.detail-title {
+  font-size: 24px;
+  color: #2f3a4a;
+  margin: 0 0 12px;
+}
+
+.empty-text {
+  font-size: 22px;
+  color: #6a7480;
+  margin: 0;
+}
+
+.form-field {
+  margin-bottom: 16px;
+}
+
+.form-field-large {
+  margin-bottom: 20px;
+}
+
+.form-label {
+  display: block;
+  font-size: 20px;
+  margin-bottom: 8px;
+  color: #3f4a59;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid #cfd6df;
+  background: #ffffff;
+}
+
+.form-input,
+.form-select {
+  font-size: 22px;
+}
+
+.form-textarea {
+  font-size: 20px;
+  resize: vertical;
+}
+
+.file-input {
+  width: 100%;
+  font-size: 18px;
+}
+
+.primary-button {
+  width: 100%;
+  font-size: 24px;
+  padding: 18px 20px;
+  border-radius: 18px;
+  border: none;
+  background-color: #7ec8a5;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button {
+  width: 100%;
+  font-size: 20px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: none;
+  background-color: #8fb6ff;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.warning-button {
+  font-size: 18px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: none;
+  background-color: #f2b84b;
+  color: #ffffff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.card-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.plant-card,
+.history-card {
+  border: 1px solid #e3e8ee;
+  border-radius: 18px;
+  padding: 16px;
+  background-color: #f9fbfd;
+}
+
+.plant-card-selected {
+  border: 2px solid #7ec8a5;
+  background-color: #f3fbf7;
+}
+
+.card-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2f3a4a;
+  margin-bottom: 8px;
+}
+
+.card-text {
+  font-size: 18px;
+  color: #5f6b7a;
+  margin-bottom: 6px;
+}
+
+.card-text-small {
+  font-size: 16px;
+  color: #6a7480;
+  margin-bottom: 6px;
+}
+
+.summary-box {
+  padding: 16px;
+  border-radius: 18px;
+  background-color: #f3fbf7;
+  border: 1px solid #d7efe2;
+  margin-bottom: 20px;
+}
+
+.summary-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2f3a4a;
+  margin-bottom: 8px;
+}
+
+.preview-image {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 12px;
+  border-radius: 16px;
+  border: 1px solid #d7dde5;
+}
+
+.record-image {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  border: 1px solid #d7dde5;
+}
+
+.checkbox-group {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.checkbox-label {
+  font-size: 20px;
+  color: #3f4a59;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox-input {
+  width: 22px;
+  height: 22px;
+}
+
+.suggestion-box {
+  margin-bottom: 20px;
+  padding: 16px;
+  border-radius: 18px;
+  background-color: #fff8e8;
+  border: 1px solid #f0d999;
+}
+
+.suggestion-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #5b4922;
+  margin-bottom: 10px;
+}
+
+.suggestion-text {
+  font-size: 18px;
+  color: #5b4922;
+  margin-bottom: 6px;
+}
+
+.suggestion-guide {
+  font-size: 17px;
+  color: #6b5a35;
+  margin-bottom: 10px;
+}
+
+.suggestion-meta {
+  font-size: 16px;
+  color: #7a6a45;
+  margin-bottom: 12px;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.question-button {
+  font-size: 20px;
+  padding: 16px;
+  border-radius: 18px;
+  border: none;
+  background-color: #ffd98e;
+  color: #4a3a1f;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.question-card {
+  border: 1px solid #e3e8ee;
+  border-radius: 18px;
+  padding: 16px;
+  background-color: #fffaf0;
+}
+
+.meta-text {
+  font-size: 16px;
+  color: #7a6a45;
+  margin-bottom: 8px;
+}
+
+.question-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #6b562a;
+  margin-bottom: 8px;
+}
+
+.answer-text {
+  font-size: 20px;
+  color: #4a3a1f;
+  line-height: 1.5;
+}
+
+.detail-block {
+  margin-bottom: 24px;
+}
+
+.detail-block:last-child {
+  margin-bottom: 0;
+}
+.section-card-compact {
+  padding: 18px;
+}
+
+.subtab-header {
+  margin-bottom: 14px;
+}
+
+.subtab-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #35523d;
+  margin-bottom: 6px;
+}
+
+.subtab-helper {
+  font-size: 16px;
+  color: #7a817a;
+  line-height: 1.5;
+}
+
+.plant-subtabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.plant-subtab-button {
+  min-height: 58px;
+  padding: 14px 12px;
+  border: 1px solid #d9e6dc;
+  border-radius: 18px;
+  background: #f5fbf7;
+  color: #4d5b52;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.plant-subtab-button.active {
+  background: #8dc7a3;
+  color: #ffffff;
+  border-color: #8dc7a3;
+  box-shadow: 0 8px 18px rgba(141, 199, 163, 0.22);
+}
+
+.floating-global-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 30;
+  display: grid;
+  gap: 10px;
+  width: min(180px, calc(100vw - 36px));
+  padding: 12px;
+  border-radius: 22px;
+  background: rgba(255, 253, 248, 0.96);
+  border: 1px solid #ece5d7;
+  box-shadow: 0 12px 28px rgba(79, 67, 38, 0.16);
+  backdrop-filter: blur(6px);
+}
+
+.floating-tab {
+  min-height: 54px;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 16px;
+  background: #eef2ea;
+  color: #556158;
+  font-size: 17px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.floating-tab.active {
+  background: #f0c96b;
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(240, 201, 107, 0.24);
+}
+
+@media (max-width: 760px) {
+  .plant-subtabs {
+    grid-template-columns: 1fr;
+  }
+
+  .floating-global-panel {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .floating-tab {
+    min-height: 50px;
+    font-size: 16px;
+  }
+}
