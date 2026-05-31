@@ -5077,14 +5077,7 @@ export default function App() {
             <span>{isAppInstalled ? "설치됨" : "앱 설치"}</span>
           </button>
 
-          <button
-            type="button"
-            style={styles.settingsButton}
-            onClick={() => setScreen("answerTest")}
-          >
-            <img src="/icons/settings.png" alt="설정" style={styles.settingsIcon} />
-            <span>답변 테스트</span>
-          </button>
+          {/* 답변 테스트 버튼 — 내부 개발용, 배포 환경에서는 숨김 */}
         </div>
       </header>
     );
@@ -7555,6 +7548,7 @@ export default function App() {
                           />
                         </span>
                       )}
+                      <span style={{ fontSize: "10px", color: "#8a9a7a", marginBottom: "1px" }}>잎</span>
                       <span style={styles.visualSummaryText}>{leafVisualState}</span>
                     </button>
 
@@ -7581,6 +7575,7 @@ export default function App() {
                           />
                         </span>
                       )}
+                      <span style={{ fontSize: "10px", color: "#8a9a7a", marginBottom: "1px" }}>흙</span>
                       <span style={styles.visualSummaryText}>{soilVisualState}</span>
                     </button>
 
