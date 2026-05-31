@@ -2620,9 +2620,7 @@ export default function App() {
       currentChildName: trimmedChildName,
     }).catch((error) => {
       console.error("아이 목록 저장 실패:", error);
-      alert(
-        "아이 이름을 앱 화면에는 추가했지만 서버 저장은 실패했어요. 식물talk을 다시 열기 전에 서버가 켜져 있는지 확인해 주세요."
-      );
+      // localStorage에 저장됨 — 서버 저장 실패는 무시
     });
   };
 
