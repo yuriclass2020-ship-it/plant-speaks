@@ -7978,10 +7978,10 @@ const styles: Record<string, CSSProperties> = {
 
   homeLayout: {
     flex: 1,
-    padding: "16px 24px",
+    padding: "10px 16px",
     display: "grid",
     gridTemplateColumns: "1fr 0.95fr",
-    gap: "18px",
+    gap: "12px",
     minHeight: 0,
     overflowY: "auto",
   },
@@ -7989,7 +7989,7 @@ const styles: Record<string, CSSProperties> = {
   homeLeftColumn: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "8px",
     overflowY: "auto",
   },
 
@@ -8003,26 +8003,26 @@ const styles: Record<string, CSSProperties> = {
   dateCard: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "20px",
-    padding: "12px 16px",
+    borderRadius: "16px",
+    padding: "8px 14px",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: "16px",
+    gap: "12px",
     boxShadow: "0 4px 10px rgba(80, 80, 60, 0.05)",
   },
 
   dateLabel: {
     margin: 0,
     color: "#5F704B",
-    fontSize: "13px",
+    fontSize: "11px",
     fontWeight: 900,
   },
 
   dateText: {
-    margin: "4px 0 0",
+    margin: "2px 0 0",
     color: "#2F4F2F",
-    fontSize: "21px",
+    fontSize: "16px",
     fontWeight: 900,
     wordBreak: "keep-all",
   },
@@ -8077,11 +8077,11 @@ const styles: Record<string, CSSProperties> = {
   },
 
   myPlantCard: {
-    minHeight: "132px",
+    minHeight: "90px",
     background: "#F6F1DE",
     border: "1px solid #E4DABF",
-    borderRadius: "22px",
-    padding: "16px",
+    borderRadius: "18px",
+    padding: "10px 14px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -8173,8 +8173,8 @@ const styles: Record<string, CSSProperties> = {
   todayCard: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "22px",
-    padding: "14px",
+    borderRadius: "18px",
+    padding: "10px 12px",
   },
 
   homeWaterAlert: {
@@ -8200,23 +8200,23 @@ const styles: Record<string, CSSProperties> = {
   },
 
   homeWaterCounterAlert: {
-    marginTop: "8px",
+    marginTop: "6px",
     background: "#FFF0C6",
     border: "2px solid #E5B84B",
-    borderRadius: "20px",
-    padding: "12px",
+    borderRadius: "16px",
+    padding: "8px 10px",
     display: "grid",
-    gridTemplateColumns: "92px 1fr auto",
-    gap: "12px",
+    gridTemplateColumns: "64px 1fr auto",
+    gap: "8px",
     alignItems: "center",
   },
 
   homeWaterCounterReady: {
-    marginTop: "8px",
+    marginTop: "6px",
     background: "#F2F7EA",
     border: "1px solid #DCE8CF",
-    borderRadius: "20px",
-    padding: "12px",
+    borderRadius: "16px",
+    padding: "8px 10px",
     display: "grid",
     gridTemplateColumns: "92px 1fr auto",
     gap: "12px",
@@ -8262,7 +8262,7 @@ const styles: Record<string, CSSProperties> = {
 
   homeWaterCounterTitle: {
     color: "#2F4F2F",
-    fontSize: "25px",
+    fontSize: "18px",
     fontWeight: 950,
     lineHeight: 1.1,
   },
