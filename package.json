@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host localhost --port 5175 --strictPort",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -12,7 +12,8 @@
     "@vitejs/plugin-react": "latest",
     "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "openai": "^4.90.0"
   },
   "devDependencies": {}
 }

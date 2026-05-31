@@ -178,43 +178,77 @@ function QuestionSection({
       return;
     }
 
-    const recognition = new SpeechRecognitionCtor();
-    recognitionRef.current = recognition;
+    const beginRecognition = () => {
+      const recognition = new SpeechRecognitionCtor();
+      recognitionRef.current = recognition;
 
-    recognition.lang = 'ko-KR';
-    recognition.interimResults = false;
-    recognition.continuous = false;
+      recognition.lang = 'ko-KR';
+      recognition.interimResults = false;
+      recognition.continuous = false;
 
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
 
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((result) => result[0]?.transcript ?? '')
-        .join(' ')
-        .trim();
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map((result) => result[0]?.transcript ?? '')
+          .join(' ')
+          .trim();
 
-      if (transcript) {
-        setFreeQuestionText(transcript);
+        if (transcript) {
+          setFreeQuestionText(transcript);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+          setSpeechError('마이크 권한을 허용해야 음성 질문을 쓸 수 있어요.');
+        } else if (event.error === 'no-speech') {
+          setSpeechError('말소리가 잘 들리지 않았어요. 다시 말해 주세요.');
+        } else if (event.error === 'aborted') {
+          // iOS Safari occasionally aborts — silently ignore
+        } else {
+          setSpeechError('음성 질문을 인식하지 못했어요. 다시 시도해 주세요.');
+        }
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      try {
+        recognition.start();
+      } catch {
+        setSpeechError('녹음 시작에 실패했어요. 다시 시도해 주세요.');
+        setIsListening(false);
       }
     };
 
-    recognition.onerror = (event) => {
-      if (event.error === 'not-allowed') {
-        setSpeechError('마이크 권한을 허용해야 음성 질문을 쓸 수 있어요.');
-      } else if (event.error === 'no-speech') {
-        setSpeechError('말소리가 잘 들리지 않았어요. 다시 말해 주세요.');
-      } else {
-        setSpeechError('음성 질문을 인식하지 못했어요. 다시 시도해 주세요.');
-      }
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognition.start();
+    // iOS Safari requires getUserMedia to be called first so that the browser
+    // properly activates the microphone permission before SpeechRecognition.start().
+    if (navigator.mediaDevices?.getUserMedia) {
+      setIsListening(true); // show feedback while waiting for permission
+      navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then((stream) => {
+          stream.getTracks().forEach((track) => track.stop());
+          beginRecognition();
+        })
+        .catch((err: unknown) => {
+          setIsListening(false);
+          const name = err instanceof DOMException ? err.name : '';
+          if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+            setSpeechError('마이크 권한을 허용해야 음성 질문을 쓸 수 있어요.');
+          } else {
+            // getUserMedia unavailable on this device — try recognition directly
+            beginRecognition();
+          }
+        });
+    } else {
+      beginRecognition();
+    }
   };
 
   const stopVoiceInput = () => {
