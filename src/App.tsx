@@ -204,28 +204,8 @@ const QUICK_CHAT_QUESTIONS = [
 ];
 
 function getTestAccessHeaders(): HeadersInit {
-  if (typeof window === "undefined") {
-    return {
-      "Content-Type": "application/json",
-    };
-  }
-
-  let accessCode = window.localStorage
-    .getItem(TEST_ACCESS_CODE_STORAGE_KEY)
-    ?.trim();
-
-  if (!accessCode) {
-    accessCode =
-      window.prompt("테스트 참여 코드를 입력해 주세요.")?.trim() ?? "";
-
-    if (accessCode) {
-      window.localStorage.setItem(TEST_ACCESS_CODE_STORAGE_KEY, accessCode);
-    }
-  }
-
   return {
     "Content-Type": "application/json",
-    ...(accessCode ? { "x-test-access-code": accessCode } : {}),
   };
 }
 
