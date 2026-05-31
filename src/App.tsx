@@ -5461,13 +5461,13 @@ export default function App() {
                   );
 
                   return (
-                    <div key={childName} style={{ position: "relative" }}>
+                    <div key={childName} style={{ position: "relative", width: "100%", height: "100%" }}>
                       <button
                         type="button"
                         style={
                           childName === currentChildName
-                            ? styles.startChildButtonActive
-                            : styles.startChildButton
+                            ? { ...styles.startChildButtonActive, width: "100%", height: "100%" }
+                            : { ...styles.startChildButton, width: "100%", height: "100%" }
                         }
                         onClick={() => {
                           selectChildName(childName);
