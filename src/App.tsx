@@ -5461,36 +5461,75 @@ export default function App() {
                   );
 
                   return (
-                    <button
-                      key={childName}
-                      type="button"
-                      style={
-                        childName === currentChildName
-                          ? styles.startChildButtonActive
-                          : styles.startChildButton
-                      }
-                      onClick={() => {
-                        selectChildName(childName);
-                        setScreen("home");
-                      }}
-                    >
-                      <strong style={styles.startChildName}>{childName}</strong>
-                      <span style={styles.startChildMeta}>
-                        기록 {participation?.recordCount ?? 0} · 질문{" "}
-                        {participation?.questionCount ?? 0}
-                      </span>
-                      <span style={styles.childParticipationBarTrack}>
-                        <span
-                          style={{
-                            ...styles.childParticipationBarFill,
-                            width: `${Math.min(
-                              100,
-                              ((participation?.total ?? 0) / 5) * 100
-                            )}%`,
-                          }}
-                        />
-                      </span>
-                    </button>
+                    <div key={childName} style={{ position: "relative" }}>
+                      <button
+                        type="button"
+                        style={
+                          childName === currentChildName
+                            ? styles.startChildButtonActive
+                            : styles.startChildButton
+                        }
+                        onClick={() => {
+                          selectChildName(childName);
+                          setScreen("home");
+                        }}
+                      >
+                        <strong style={styles.startChildName}>{childName}</strong>
+                        <span style={styles.startChildMeta}>
+                          기록 {participation?.recordCount ?? 0} · 질문{" "}
+                          {participation?.questionCount ?? 0}
+                        </span>
+                        <span style={styles.childParticipationBarTrack}>
+                          <span
+                            style={{
+                              ...styles.childParticipationBarFill,
+                              width: `${Math.min(
+                                100,
+                                ((participation?.total ?? 0) / 5) * 100
+                              )}%`,
+                            }}
+                          />
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        title={`${childName} 삭제`}
+                        style={{
+                          position: "absolute",
+                          top: "6px",
+                          right: "6px",
+                          width: "20px",
+                          height: "20px",
+                          borderRadius: "50%",
+                          border: "none",
+                          background: "rgba(0,0,0,0.15)",
+                          color: "#fff",
+                          fontSize: "12px",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          lineHeight: 1,
+                          padding: 0,
+                          zIndex: 2,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`${childName} 아이를 삭제할까요?`)) return;
+                          const nextRoster = knownChildNames.filter(n => n !== childName);
+                          setChildRoster(nextRoster);
+                          localStorage.setItem(CHILD_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster));
+                          if (currentChildName === childName) {
+                            const next = nextRoster[0] ?? "";
+                            setCurrentChildName(next);
+                            localStorage.setItem(CHILD_STORAGE_KEY, next);
+                          }
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -7949,13 +7988,14 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "1fr 0.95fr",
     gap: "18px",
     minHeight: 0,
+    overflowY: "auto",
   },
 
   homeLeftColumn: {
     display: "flex",
     flexDirection: "column",
     gap: "10px",
-    minHeight: 0,
+    overflowY: "auto",
   },
 
   homeRightColumn: {
