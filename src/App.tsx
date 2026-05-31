@@ -7548,8 +7548,9 @@ export default function App() {
                           />
                         </span>
                       )}
-                      <span style={{ fontSize: "10px", color: "#8a9a7a", marginBottom: "1px" }}>잎</span>
-                      <span style={styles.visualSummaryText}>{leafVisualState}</span>
+                      <span style={styles.visualSummaryText}>
+                        {leafVisualState === "기록해요" ? "잎 기록해요" : leafVisualState}
+                      </span>
                     </button>
 
                     <button
@@ -7575,8 +7576,9 @@ export default function App() {
                           />
                         </span>
                       )}
-                      <span style={{ fontSize: "10px", color: "#8a9a7a", marginBottom: "1px" }}>흙</span>
-                      <span style={styles.visualSummaryText}>{soilVisualState}</span>
+                      <span style={styles.visualSummaryText}>
+                        {soilVisualState === "기록해요" ? "흙 기록해요" : soilVisualState}
+                      </span>
                     </button>
 
                     <button
@@ -8377,11 +8379,11 @@ const styles: Record<string, CSSProperties> = {
   },
 
   visualSummaryCard: {
-    marginTop: "8px",
+    marginTop: "6px",
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "18px",
-    padding: "10px",
+    borderRadius: "14px",
+    padding: "7px 8px",
   },
 
   visualSummaryHeader: {
@@ -8414,9 +8416,9 @@ const styles: Record<string, CSSProperties> = {
   visualSummaryItem: {
     border: "1px solid #E4DABF",
     background: "#FFFDF6",
-    borderRadius: "14px",
-    minHeight: "72px",
-    padding: "8px 6px",
+    borderRadius: "12px",
+    minHeight: "56px",
+    padding: "6px 4px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
