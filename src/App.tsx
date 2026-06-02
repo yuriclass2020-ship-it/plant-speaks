@@ -7420,7 +7420,7 @@ export default function App() {
 
               {/* 돌봐줘요 카드 */}
               <div style={styles.todayCard}>
-                <p style={styles.sectionLabel}>💧 돌봐줘요</p>
+                <p style={styles.sectionLabel}>💧 돌봐주세요</p>
                 <div style={plantNeedsAttention ? styles.homeWaterCounterAlert : styles.homeWaterCounterReady}>
                   <div
                     style={styles.homeWaterMiniStage}
