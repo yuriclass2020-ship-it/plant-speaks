@@ -7443,7 +7443,7 @@ export default function App() {
                   {/* 식물 한마디 */}
                   {plantWaterSpeech && (
                     <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#5F704B", fontStyle: "italic" }}>
-                      💬 "{plantWaterSpeech}"
+                      💬 {plantWaterSpeech}
                     </p>
                   )}
                 </div>
@@ -7514,27 +7514,28 @@ export default function App() {
                     style={{
                       border: "1px solid #E4DABF",
                       background: "#FFFDF6",
-                      borderRadius: "14px",
-                      padding: "10px 6px",
+                      borderRadius: "16px",
+                      padding: "14px 6px",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: "5px",
+                      gap: "8px",
                       cursor: "pointer",
+                      flex: 1,
                     }}
                   >
                     <img
                       src={icon}
                       alt={label}
                       style={{
-                        width: "28px",
-                        height: "28px",
+                        width: "36px",
+                        height: "36px",
                         objectFit: "contain",
                         opacity: faded ? 0.3 : 1,
                       }}
                     />
                     <span style={{
-                      fontSize: "12px",
+                      fontSize: "13px",
                       fontWeight: 900,
                       color: "#2F4F2F",
                       textAlign: "center",
@@ -7897,14 +7898,13 @@ const styles: Record<string, CSSProperties> = {
 
   homeLayout: {
     flex: 1,
-    padding: "10px 16px",
+    padding: "10px 16px 14px",
     display: "grid",
     gridTemplateColumns: "1fr 0.95fr",
-    gridTemplateRows: "auto 1fr",
     gap: "12px",
     minHeight: 0,
     overflowY: "auto",
-    alignItems: "start",
+    alignItems: "stretch",
   },
 
   homeLeftColumn: {
@@ -10421,10 +10421,10 @@ const styles: Record<string, CSSProperties> = {
 
   chatLayout: {
     flex: 1,
-    padding: "18px 28px",
+    padding: "14px 20px",
     display: "grid",
-    gridTemplateColumns: "300px 1fr",
-    gap: "22px",
+    gridTemplateColumns: "220px 1fr",
+    gap: "16px",
     minHeight: 0,
     overflow: "hidden",
   },
