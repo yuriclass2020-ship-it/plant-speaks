@@ -8220,15 +8220,15 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "16px",
     padding: "8px 10px",
     display: "grid",
-    gridTemplateColumns: "92px 1fr auto",
-    gap: "12px",
+    gridTemplateColumns: "64px 1fr auto",
+    gap: "8px",
     alignItems: "center",
   },
 
   homeWaterMiniStage: {
     position: "relative",
-    width: "92px",
-    height: "92px",
+    width: "64px",
+    height: "64px",
     display: "flex",
     alignItems: "flex-end",
     justifyContent: "center",
@@ -8247,12 +8247,12 @@ const styles: Record<string, CSSProperties> = {
   },
 
   homeWaterDropIcon: {
-    width: "30px",
-    height: "30px",
+    width: "22px",
+    height: "22px",
     objectFit: "contain",
     position: "absolute",
-    top: "4px",
-    right: "8px",
+    top: "2px",
+    right: "4px",
   },
 
   homeWaterCounterTextBox: {
@@ -8271,7 +8271,7 @@ const styles: Record<string, CSSProperties> = {
 
   homeWaterCounterCount: {
     color: "#757064",
-    fontSize: "24px",
+    fontSize: "18px",
     fontWeight: 950,
     lineHeight: 1.15,
   },
