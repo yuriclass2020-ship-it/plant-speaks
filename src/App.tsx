@@ -4669,7 +4669,7 @@ export default function App() {
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
       audio.preload = "auto";
-      audio.playbackRate = 1.12;
+      audio.playbackRate = 1.0; // 속도 그대로 재생
 
       audio.onplay = () => {
         if (activeAudioIdRef.current === messageId) {
@@ -4688,10 +4688,8 @@ export default function App() {
 
       audio.onerror = () => {
         if (activeAudioIdRef.current !== messageId) return;
-
         activeAudioIdRef.current = "";
         setReadingMessageId("");
-        setSpeechError("음성 재생이 어려워서 기본 목소리로 읽어줄게요.");
         speakWithBrowserVoice(speechText, messageId);
       };
 
@@ -4699,7 +4697,6 @@ export default function App() {
       await audio.play();
     } catch {
       activeAudioIdRef.current = "";
-      setSpeechError("좋은 목소리 준비가 늦어서 기본 목소리로 읽어줄게요.");
       speakWithBrowserVoice(speechText, messageId);
     } finally {
       setLoadingAudioId("");
