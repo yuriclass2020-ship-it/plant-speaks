@@ -23,13 +23,12 @@ export default async function handler(req, res) {
           input: { text: text.trim().slice(0, 300) },
           voice: {
             languageCode: 'ko-KR',
-            name: 'ko-KR-Wavenet-A',  // 자연스러운 한국어 여성 목소리
+            name: 'ko-KR-Neural2-A',  // 최고품질 한국어 여성 목소리
           },
           audioConfig: {
             audioEncoding: 'MP3',
-            speakingRate: 0.9,   // 살짝 느리게
-            pitch: 2.0,          // 조금 높게 — 밝고 친근한 톤
-            volumeGainDb: 1.0,
+            speakingRate: 0.92,  // 살짝 느리게
+            pitch: 0.0,          // 자연 그대로
           },
         }),
       }
