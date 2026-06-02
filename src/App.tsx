@@ -7466,13 +7466,13 @@ export default function App() {
             </section>
 
             <section style={styles.homeRightColumn}>
+              {/* 대화 버튼 — 왼쪽 식물 카드와 같은 공간 채움 */}
               <button
                 type="button"
                 style={styles.chatHeroCard}
                 onClick={() => setScreen("chat")}
               >
                 <img src={logoPath} alt="식물과 대화하기" style={styles.chatHeroIcon} />
-
                 <div style={styles.chatHeroTextBox}>
                   <h2 style={styles.chatHeroTitle}>
                     {plantDisplayName}와 대화하기
@@ -7481,121 +7481,71 @@ export default function App() {
                     {plant ? "궁금한 거 뭐든지 물어봐!" : "등록하면 저랑 대화할 수 있어요!"}
                   </p>
                 </div>
-
                 <span style={styles.chatHeroArrow}>→</span>
               </button>
 
+              {/* 관찰 버튼 3개 — 가로 나열 */}
               <div style={{
-                background: "#FFFFFF",
-                border: "1px solid #E8E1C8",
-                borderRadius: "18px",
-                padding: "10px 12px",
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "8px",
               }}>
-                <p style={{ ...styles.sectionLabel, marginBottom: "8px" }}>
-                  오늘 내 모습이에요 👀
-                </p>
-
-                  <div style={styles.visualSummaryGrid}>
-                    <button
-                      type="button"
-                      style={styles.visualSummaryItem}
-                      onClick={() => setScreen("leafRecord")}
-                    >
-                      {latestLeafRecord ? (
-                        <img
-                          src={latestLeafIcon || "/icons/leaf.png"}
-                          alt="잎"
-                          style={styles.visualSummaryIcon}
-                        />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          style={styles.visualSummaryPlaceholder}
-                        >
-                          <img
-                            src="/icons/leaf.png"
-                            alt=""
-                            style={styles.visualSummaryPlaceholderIcon}
-                          />
-                        </span>
-                      )}
-                      <span style={styles.visualSummaryText}>
-                        {leafVisualState === "기록해요" ? "잎 봐줘요" : leafVisualState}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      style={styles.visualSummaryItem}
-                      onClick={() => setScreen("soilRecord")}
-                    >
-                      {latestSoilRecord ? (
-                        <img
-                          src={latestSoilIcon || "/icons/soil.png"}
-                          alt="흙"
-                          style={styles.visualSummaryIcon}
-                        />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          style={styles.visualSummaryPlaceholder}
-                        >
-                          <img
-                            src="/icons/soil.png"
-                            alt=""
-                            style={styles.visualSummaryPlaceholderIcon}
-                          />
-                        </span>
-                      )}
-                      <span style={styles.visualSummaryText}>
-                        {soilVisualState === "기록해요" ? "흙 봐줘요" : soilVisualState}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      style={styles.visualSummaryItem}
-                      onClick={() => setScreen("photoRecord")}
-                    >
-                      {latestPhotoRecord ? (
-                        <img
-                          src={latestPhotoIcon}
-                          alt="사진"
-                          style={styles.visualSummaryIcon}
-                        />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          style={styles.visualSummaryPlaceholder}
-                        >
-                          <img
-                            src="/icons/camera.png"
-                            alt=""
-                            style={styles.visualSummaryPlaceholderIcon}
-                          />
-                        </span>
-                      )}
-                      <span style={styles.visualSummaryText}>{photoVisualState}</span>
-                    </button>
-                  </div>
-
-                {newestPhotoRecord?.imageData && (
+                {[
+                  {
+                    icon: latestLeafRecord ? (latestLeafIcon || "/icons/leaf.png") : "/icons/leaf.png",
+                    label: leafVisualState === "기록해요" ? "잎 봐줘요" : leafVisualState,
+                    faded: !latestLeafRecord,
+                    screen: "leafRecord",
+                  },
+                  {
+                    icon: latestSoilRecord ? (latestSoilIcon || "/icons/soil.png") : "/icons/soil.png",
+                    label: soilVisualState === "기록해요" ? "흙 봐줘요" : soilVisualState,
+                    faded: !latestSoilRecord,
+                    screen: "soilRecord",
+                  },
+                  {
+                    icon: latestPhotoRecord ? latestPhotoIcon : "/icons/camera.png",
+                    label: photoVisualState,
+                    faded: !latestPhotoRecord,
+                    screen: "photoRecord",
+                  },
+                ].map(({ icon, label, faded, screen: sc }) => (
                   <button
+                    key={sc}
                     type="button"
-                    style={styles.homePhotoCard}
-                    onClick={() => setScreen("record")}
+                    onClick={() => setScreen(sc as typeof screen)}
+                    style={{
+                      border: "1px solid #E4DABF",
+                      background: "#FFFDF6",
+                      borderRadius: "14px",
+                      padding: "10px 6px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "5px",
+                      cursor: "pointer",
+                    }}
                   >
                     <img
-                      src={newestPhotoRecord.imageData}
-                      alt="최근 식물 사진"
-                      style={styles.homePhotoImage}
+                      src={icon}
+                      alt={label}
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        objectFit: "contain",
+                        opacity: faded ? 0.3 : 1,
+                      }}
                     />
-                    <span style={styles.homePhotoTextBox}>
-                      <strong>최근 사진</strong>
-                      <small>{newestPhotoRecord.date}</small>
+                    <span style={{
+                      fontSize: "12px",
+                      fontWeight: 900,
+                      color: "#2F4F2F",
+                      textAlign: "center",
+                    }}>
+                      {label}
                     </span>
                   </button>
-                )}
+                ))}
               </div>
             </section>
           </main>
@@ -7953,9 +7903,11 @@ const styles: Record<string, CSSProperties> = {
     padding: "10px 16px",
     display: "grid",
     gridTemplateColumns: "1fr 0.95fr",
+    gridTemplateRows: "auto 1fr",
     gap: "12px",
     minHeight: 0,
     overflowY: "auto",
+    alignItems: "start",
   },
 
   homeLeftColumn: {
