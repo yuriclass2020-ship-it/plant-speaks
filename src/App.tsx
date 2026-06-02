@@ -7375,270 +7375,194 @@ export default function App() {
         <div style={styles.screenContent}>
           {renderTopBar("식물talk", "오늘 식물에게 말을 걸어볼까요?")}
 
-          {/* ── 싸이월드 미니홈피 스타일 ── */}
-          <main style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            padding: "10px 16px 10px",
-            gap: "10px",
-            minHeight: 0,
-            background: "linear-gradient(160deg, #F0F7E8 0%, #EAF4E0 100%)",
-          }}>
+          <main style={styles.homeLayout}>
+            <section style={styles.homeLeftColumn}>
+              <div style={styles.dateCard}>
+                <div>
+                  <p style={styles.dateLabel}>오늘 날짜</p>
+                  <h2 style={styles.dateText}>{todayLabel}</h2>
+                </div>
 
-            {/* 상단 정보바: 날짜 + 아이 이름 */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "6px 14px",
-              background: "rgba(255,255,255,0.7)",
-              borderRadius: "999px",
-              border: "1px solid #D4E8C4",
-            }}>
-              <span style={{ fontSize: "13px", fontWeight: 900, color: "#4A6741" }}>📅 {todayLabel}</span>
-              <span style={{ fontSize: "13px", fontWeight: 900, color: "#4A6741" }}>
-                {hasSelectedChild ? `🌱 ${activeChildName}의 식물` : "🌱 나의 식물"}
-              </span>
-              <button type="button" style={{ ...styles.editPlantButton, fontSize: "12px" }} onClick={() => setScreen("register")}>
-                {plant ? "수정" : "등록"}
-              </button>
-            </div>
+                <img src={dateIconPath} alt="오늘 날짜" style={styles.dateIcon} />
+              </div>
 
-            {/* 중앙: 대화창 | 캐릭터 | 말풍선 */}
-            <div style={{
-              flex: 1,
-              display: "grid",
-              gridTemplateColumns: "1fr 1.2fr 1fr",
-              gap: "10px",
-              minHeight: 0,
-            }}>
-
-              {/* 왼쪽: 대화창 (방명록 느낌) */}
-              <div style={{
-                background: "rgba(255,255,255,0.85)",
-                borderRadius: "20px",
-                border: "1.5px solid #C8E0B8",
-                padding: "12px 10px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "6px",
-                overflow: "hidden",
-              }}>
-                <p style={{ margin: 0, fontSize: "13px", fontWeight: 900, color: "#3A5C2F", textAlign: "center" }}>
-                  💬 대화
-                </p>
-                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {chatMessages.length > 0 ? (
-                    chatMessages.slice(-2).map((msg) => (
-                      <div key={msg.id} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                        <div style={{
-                          padding: "5px 8px",
-                          borderRadius: "10px",
-                          background: "#DCF0D0",
-                          fontSize: "11px",
-                          color: "#2F4F2F",
-                          wordBreak: "keep-all",
-                          lineHeight: 1.4,
-                        }}>
-                          👧 {msg.question.slice(0, 30)}{msg.question.length > 30 ? "…" : ""}
-                        </div>
-                        {msg.answer && (
-                          <div style={{
-                            padding: "5px 8px",
-                            borderRadius: "10px",
-                            background: "#F0F4EC",
-                            fontSize: "11px",
-                            color: "#2F4F2F",
-                            wordBreak: "keep-all",
-                            lineHeight: 1.4,
-                          }}>
-                            🌿 {msg.answer.slice(0, 40)}{msg.answer.length > 40 ? "…" : ""}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <p style={{ margin: "auto", fontSize: "12px", color: "#8AAA78", textAlign: "center" }}>
-                      아직 대화가 없어요.<br />식물에게 말 걸어봐요!
+              {/* 식물 + 돌봄 통합 카드 */}
+              <div style={styles.myPlantCard}>
+                <div style={styles.myPlantTextBox}>
+                  <div style={styles.myPlantTopLine}>
+                    <p style={styles.sectionLabel}>
+                      {hasSelectedChild ? `${activeChildName}의 식물` : "나의 식물"}
                     </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setScreen("chat")}
-                  style={{
-                    padding: "7px 0",
-                    borderRadius: "999px",
-                    border: "none",
-                    background: "#4A8B3A",
-                    color: "white",
-                    fontSize: "13px",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  말 걸기 →
-                </button>
-              </div>
-
-              {/* 중앙: 화분 캐릭터 */}
-              <div style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "6px",
-              }}>
-                <button
-                  type="button"
-                  onClick={() => speakText(plantStatusSpeech, "plant-status")}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}
-                >
-                  <div
-                    style={{ position: "relative" }}
-                    className={careMotion === "water" ? "plant-talk-water-active" : ""}
-                  >
-                    <img
-                      src={mainImagePath}
-                      alt={plantDisplayName}
-                      className="plant-talk-care-plant"
-                      style={{ width: "130px", height: "130px", objectFit: "contain", filter: "drop-shadow(0 6px 12px rgba(80,120,60,0.2))" }}
-                    />
-                    <img src="/icons/water.png" alt="" className="plant-talk-water-can"
-                      style={{ width: "28px", height: "28px", objectFit: "contain", position: "absolute", top: 0, right: 0 }} />
+                    <button
+                      type="button"
+                      style={styles.editPlantButton}
+                      onClick={() => setScreen("register")}
+                    >
+                      {plant ? "수정" : "등록"}
+                    </button>
                   </div>
-                  <span style={{
-                    fontSize: "18px", fontWeight: 900, color: "#2F4F2F",
-                    background: "rgba(255,255,255,0.8)",
-                    padding: "3px 14px", borderRadius: "999px",
-                    border: "1px solid #C8E0B8",
-                  }}>
-                    {plantDisplayName}
-                  </span>
-                  <span style={{ fontSize: "11px", color: "#6B8A5A" }}>
-                    {readingMessageId === "plant-status" ? "🔊 말하는 중..." : "👆 눌러봐요"}
-                  </span>
-                </button>
-              </div>
 
-              {/* 오른쪽: 말풍선 */}
-              <div style={{
-                background: "rgba(255,255,255,0.85)",
-                borderRadius: "20px",
-                border: "1.5px solid #C8E0B8",
-                padding: "12px 10px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-                position: "relative",
-              }}>
-                {/* 말풍선 꼬리 */}
-                <div style={{
-                  position: "absolute",
-                  left: "-10px",
-                  top: "30px",
-                  width: 0,
-                  height: 0,
-                  borderTop: "8px solid transparent",
-                  borderBottom: "8px solid transparent",
-                  borderRight: "10px solid #C8E0B8",
-                }} />
-                <div style={{
-                  position: "absolute",
-                  left: "-8px",
-                  top: "31px",
-                  width: 0,
-                  height: 0,
-                  borderTop: "7px solid transparent",
-                  borderBottom: "7px solid transparent",
-                  borderRight: "9px solid rgba(255,255,255,0.85)",
-                }} />
+                  <h2 style={styles.myPlantName}>{plantDisplayName}</h2>
+                  <p style={styles.myPlantType}>{plantDisplayType}</p>
 
-                <p style={{ margin: 0, fontSize: "13px", fontWeight: 900, color: "#3A5C2F" }}>🗨️ {plantDisplayName} 한마디</p>
-                <p style={{
-                  margin: 0,
-                  fontSize: "13px",
-                  color: "#2F4F2F",
-                  lineHeight: 1.5,
-                  wordBreak: "keep-all",
-                  flex: 1,
-                  background: "#F0F7E8",
-                  borderRadius: "12px",
-                  padding: "8px 10px",
-                }}>
-                  {plantWaterSpeech || `안녕! 나는 ${plantDisplayName}이야. 오늘도 잘 부탁해! 🌿`}
-                </p>
-
-                <div style={{ borderTop: "1px solid #D4E8C4", paddingTop: "8px" }}>
-                  <p style={{ margin: "0 0 4px", fontSize: "11px", fontWeight: 900, color: "#6B8A5A" }}>💧 물 주기 현황</p>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span style={{ fontSize: "15px", fontWeight: 900, color: "#2979B0" }}>{todayWaterCount}/{careState.waterGoal}회</span>
-                    <span style={{ fontSize: "11px", color: "#6B9FC0", flex: 1 }}>{nextWateringText}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { if (waterNeedsCare && !waterDoneToday) increaseCount("waterCount"); }}
-                    disabled={!waterNeedsCare || waterDoneToday}
-                    style={{
-                      marginTop: "6px",
-                      padding: "7px 0",
-                      borderRadius: "999px",
-                      border: "none",
-                      width: "100%",
-                      background: waterDoneToday ? "#B3D4EF" : waterNeedsCare ? "#2979B0" : "#B3D4EF",
-                      color: (!waterDoneToday && waterNeedsCare) ? "#fff" : "#6B9FC0",
-                      fontSize: "13px",
-                      fontWeight: 900,
-                      cursor: waterNeedsCare && !waterDoneToday ? "pointer" : "default",
-                    }}
-                  >
-                    {waterDoneToday ? "완료 ✓" : waterNeedsCare ? "💧 물 줬어요" : "괜찮아요"}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 하단 액션 바: 기록 버튼들 */}
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: "8px",
-            }}>
-              {[
-                { icon: latestLeafRecord ? (latestLeafIcon || "/icons/leaf.png") : "/icons/leaf.png", label: leafVisualState === "기록해요" ? "잎 봐줘요" : leafVisualState, faded: !latestLeafRecord, sc: "leafRecord" },
-                { icon: latestSoilRecord ? (latestSoilIcon || "/icons/soil.png") : "/icons/soil.png", label: soilVisualState === "기록해요" ? "흙 봐줘요" : soilVisualState, faded: !latestSoilRecord, sc: "soilRecord" },
-                { icon: latestPhotoRecord ? latestPhotoIcon : "/icons/camera.png", label: photoVisualState, faded: !latestPhotoRecord, sc: "photoRecord" },
-              ].map(({ icon, label, faded, sc }) => (
-                <button
-                  key={sc}
-                  type="button"
-                  onClick={() => setScreen(sc as typeof screen)}
-                  style={{
-                    background: "rgba(255,255,255,0.9)",
-                    border: "1.5px solid #C8E0B8",
-                    borderRadius: "14px",
-                    padding: "8px 10px",
+                  {/* 물 주기 인라인 */}
+                  <div style={{
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <img src={icon} alt={label} style={{ width: "28px", height: "28px", objectFit: "contain", opacity: faded ? 0.3 : 1 }} />
-                  <span style={{ fontSize: "13px", fontWeight: 900, color: "#3A5C2F" }}>{label}</span>
-                </button>
-              ))}
-            </div>
+                    marginTop: "8px",
+                    padding: "6px 10px",
+                    background: plantNeedsAttention ? "#FFF0C6" : "#EDF5E4",
+                    borderRadius: "12px",
+                    border: plantNeedsAttention ? "1.5px solid #E5B84B" : "1px solid #C8DFB4",
+                  }}>
+                    {/* 미니 물주기 애니메이션 스테이지 */}
+                    <div
+                      style={styles.homeWaterMiniStage}
+                      className={careMotion === "water" ? "plant-talk-water-active" : ""}
+                    >
+                      <img
+                        src={mainImagePath}
+                        alt={plantDisplayName}
+                        className="plant-talk-care-plant"
+                        style={styles.homeWaterPlantIcon}
+                      />
+                      <img
+                        src="/icons/water.png"
+                        alt=""
+                        className="plant-talk-water-can"
+                        style={styles.homeWaterDropIcon}
+                      />
+                    </div>
+                    <span style={{ fontSize: "13px", fontWeight: 900, color: "#2F4F2F", flex: 1 }}>
+                      물 주기 {todayWaterCount}/{careState.waterGoal}회
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#6B7F5A" }}>{nextWateringText}</span>
+                    <button
+                      type="button"
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "999px",
+                        border: "none",
+                        background: waterNeedsCare && !waterDoneToday ? "#4F7C43" : "#C8DFB4",
+                        color: waterNeedsCare && !waterDoneToday ? "#fff" : "#6B7F5A",
+                        fontSize: "12px",
+                        fontWeight: 900,
+                        cursor: waterNeedsCare && !waterDoneToday ? "pointer" : "default",
+                      }}
+                      onClick={() => { if (waterNeedsCare && !waterDoneToday) increaseCount("waterCount"); }}
+                      disabled={!waterNeedsCare || waterDoneToday}
+                    >
+                      {waterDoneToday ? "완료 ✓" : waterNeedsCare ? "물 줬어요" : "괜찮아요"}
+                    </button>
+                  </div>
 
+                  {/* 식물 한마디 */}
+                  {plantWaterSpeech && (
+                    <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#5F704B", fontStyle: "italic" }}>
+                      💬 {plantWaterSpeech}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  style={styles.myPlantImageButton}
+                  onClick={() => speakText(plantStatusSpeech, "plant-status")}
+                  title="식물 상태 듣기"
+                >
+                  <img src={mainImagePath} alt={plantDisplayName} style={styles.myPlantImage} />
+                  <span style={styles.myPlantListenHint}>
+                    {readingMessageId === "plant-status" ? "말하는 중 🔊" : "눌러봐요 👂"}
+                  </span>
+                </button>
+              </div>
+            </section>
+
+            <section style={styles.homeRightColumn}>
+              {/* 대화 버튼 — 왼쪽 식물 카드와 같은 공간 채움 */}
+              <button
+                type="button"
+                style={styles.chatHeroCard}
+                onClick={() => setScreen("chat")}
+              >
+                <img src={logoPath} alt="식물과 대화하기" style={styles.chatHeroIcon} />
+                <div style={styles.chatHeroTextBox}>
+                  <h2 style={styles.chatHeroTitle}>
+                    {plantDisplayName}와 대화하기
+                  </h2>
+                  <p style={styles.chatHeroDesc}>
+                    {plant ? "궁금한 거 뭐든지 물어봐!" : "등록하면 저랑 대화할 수 있어요!"}
+                  </p>
+                </div>
+                <span style={styles.chatHeroArrow}>→</span>
+              </button>
+
+              {/* 관찰 버튼 3개 — 가로 나열 */}
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "8px",
+              }}>
+                {[
+                  {
+                    icon: latestLeafRecord ? (latestLeafIcon || "/icons/leaf.png") : "/icons/leaf.png",
+                    label: leafVisualState === "기록해요" ? "잎 봐줘요" : leafVisualState,
+                    faded: !latestLeafRecord,
+                    screen: "leafRecord",
+                  },
+                  {
+                    icon: latestSoilRecord ? (latestSoilIcon || "/icons/soil.png") : "/icons/soil.png",
+                    label: soilVisualState === "기록해요" ? "흙 봐줘요" : soilVisualState,
+                    faded: !latestSoilRecord,
+                    screen: "soilRecord",
+                  },
+                  {
+                    icon: latestPhotoRecord ? latestPhotoIcon : "/icons/camera.png",
+                    label: photoVisualState,
+                    faded: !latestPhotoRecord,
+                    screen: "photoRecord",
+                  },
+                ].map(({ icon, label, faded, screen: sc }) => (
+                  <button
+                    key={sc}
+                    type="button"
+                    onClick={() => setScreen(sc as typeof screen)}
+                    style={{
+                      border: "1px solid #E4DABF",
+                      background: "#FFFDF6",
+                      borderRadius: "16px",
+                      padding: "14px 6px",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "8px",
+                      cursor: "pointer",
+                      flex: 1,
+                    }}
+                  >
+                    <img
+                      src={icon}
+                      alt={label}
+                      style={{
+                        width: "36px",
+                        height: "36px",
+                        objectFit: "contain",
+                        opacity: faded ? 0.3 : 1,
+                      }}
+                    />
+                    <span style={{
+                      fontSize: "13px",
+                      fontWeight: 900,
+                      color: "#2F4F2F",
+                      textAlign: "center",
+                    }}>
+                      {label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
           </main>
         </div>
 
