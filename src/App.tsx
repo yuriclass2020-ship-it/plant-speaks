@@ -2567,8 +2567,8 @@ export default function App() {
   ]);
 
   const plantDisplayName = plant?.name || "초록이";
-  const plantDisplayType = plant?.type || "아직 등록되지 않은 식물";
-  const plantDisplayMemo = plant?.memo || "식물을 등록하면 이곳에 소개가 보여요.";
+  const plantDisplayType = plant?.type || "저를 등록해줘요! 🌱";
+  const plantDisplayMemo = plant?.memo || "이름이랑 종류를 알려주면 대화할 수 있어요.";
   const teacherInfo = plant?.teacherInfo;
   const speciesPreset = getSpeciesPresetFromPlantType(plantDisplayType);
   const activeChildName = currentChildName.trim() || "아이 미지정";
@@ -7424,13 +7424,13 @@ export default function App() {
                     style={styles.myPlantImage}
                   />
                   <span style={styles.myPlantListenHint}>
-                    {readingMessageId === "plant-status" ? "말하는 중" : "눌러봐요"}
+                    {readingMessageId === "plant-status" ? "말하는 중 🔊" : "눌러봐요 👂"}
                   </span>
                 </button>
               </div>
 
               <div style={styles.todayCard}>
-                <p style={styles.sectionLabel}>오늘 할 일</p>
+                <p style={styles.sectionLabel}>💧 돌봐줘요</p>
 
                 <div
                   style={
@@ -7506,7 +7506,7 @@ export default function App() {
                     {plantDisplayName}와 대화하기
                   </h2>
                   <p style={styles.chatHeroDesc}>
-                    식물에게 궁금한 점을 물어봐요.
+                    {plant ? "궁금한 거 뭐든지 물어봐!" : "등록하면 저랑 대화할 수 있어요!"}
                   </p>
                 </div>
 
@@ -7514,11 +7514,11 @@ export default function App() {
               </button>
 
               <div style={styles.todayCard}>
-                <p style={styles.sectionLabel}>오늘 관찰해요</p>
+                <p style={styles.sectionLabel}>오늘 내 모습이에요 👀</p>
 
                 <div style={styles.visualSummaryCard}>
                   <div style={styles.visualSummaryHeader}>
-                    <span style={styles.visualSummaryLabel}>바로 기록하기</span>
+                    <span style={styles.visualSummaryLabel}>기록하기</span>
                     <strong style={styles.visualSummarySpeech}>
                       {recentObservationSpeech}
                     </strong>
@@ -7549,7 +7549,7 @@ export default function App() {
                         </span>
                       )}
                       <span style={styles.visualSummaryText}>
-                        {leafVisualState === "기록해요" ? "잎 기록해요" : leafVisualState}
+                        {leafVisualState === "기록해요" ? "잎 봐줘요" : leafVisualState}
                       </span>
                     </button>
 
@@ -7577,7 +7577,7 @@ export default function App() {
                         </span>
                       )}
                       <span style={styles.visualSummaryText}>
-                        {soilVisualState === "기록해요" ? "흙 기록해요" : soilVisualState}
+                        {soilVisualState === "기록해요" ? "흙 봐줘요" : soilVisualState}
                       </span>
                     </button>
 
@@ -8491,17 +8491,17 @@ const styles: Record<string, CSSProperties> = {
 
   chatHeroCard: {
     width: "100%",
-    background: "linear-gradient(135deg, #76A866, #4F7C43)",
-    border: "none",
-    borderRadius: "24px",
-    padding: "20px",
+    background: "linear-gradient(135deg, #5FA34E 0%, #3D6B34 100%)",
+    border: "2px solid rgba(255,255,255,0.15)",
+    borderRadius: "22px",
+    padding: "16px 18px",
     color: "white",
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
-    gap: "14px",
+    gap: "12px",
     textAlign: "left",
-    boxShadow: "0 12px 24px rgba(80, 120, 60, 0.24)",
+    boxShadow: "0 8px 20px rgba(60, 100, 50, 0.35)",
   },
 
   chatHeroIcon: {
