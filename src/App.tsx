@@ -7429,19 +7429,33 @@ export default function App() {
                   💬 대화
                 </p>
                 <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {chatMessages.slice(-3).length > 0 ? (
-                    chatMessages.slice(-3).map((msg, i) => (
-                      <div key={i} style={{
-                        padding: "6px 8px",
-                        borderRadius: "10px",
-                        background: msg.role === "user" ? "#DCF0D0" : "#F0F0F0",
-                        fontSize: "11px",
-                        color: "#2F4F2F",
-                        wordBreak: "keep-all",
-                        lineHeight: 1.4,
-                      }}>
-                        <span style={{ fontWeight: 700 }}>{msg.role === "user" ? "👧 " : "🌿 "}</span>
-                        {msg.content.slice(0, 50)}{msg.content.length > 50 ? "…" : ""}
+                  {chatMessages.length > 0 ? (
+                    chatMessages.slice(-2).map((msg) => (
+                      <div key={msg.id} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        <div style={{
+                          padding: "5px 8px",
+                          borderRadius: "10px",
+                          background: "#DCF0D0",
+                          fontSize: "11px",
+                          color: "#2F4F2F",
+                          wordBreak: "keep-all",
+                          lineHeight: 1.4,
+                        }}>
+                          👧 {msg.question.slice(0, 30)}{msg.question.length > 30 ? "…" : ""}
+                        </div>
+                        {msg.answer && (
+                          <div style={{
+                            padding: "5px 8px",
+                            borderRadius: "10px",
+                            background: "#F0F4EC",
+                            fontSize: "11px",
+                            color: "#2F4F2F",
+                            wordBreak: "keep-all",
+                            lineHeight: 1.4,
+                          }}>
+                            🌿 {msg.answer.slice(0, 40)}{msg.answer.length > 40 ? "…" : ""}
+                          </div>
+                        )}
                       </div>
                     ))
                   ) : (
