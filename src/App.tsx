@@ -7989,11 +7989,10 @@ const styles: Record<string, CSSProperties> = {
   },
 
   myPlantCard: {
-    minHeight: "90px",
     background: "#F6F1DE",
     border: "1px solid #E4DABF",
     borderRadius: "18px",
-    padding: "10px 14px",
+    padding: "8px 12px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -8032,7 +8031,7 @@ const styles: Record<string, CSSProperties> = {
   myPlantName: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "29px",
+    fontSize: "22px",
     fontWeight: 900,
   },
 
@@ -8174,14 +8173,14 @@ const styles: Record<string, CSSProperties> = {
 
   homeWaterCounterTitle: {
     color: "#2F4F2F",
-    fontSize: "18px",
+    fontSize: "15px",
     fontWeight: 950,
     lineHeight: 1.1,
   },
 
   homeWaterCounterCount: {
     color: "#757064",
-    fontSize: "18px",
+    fontSize: "15px",
     fontWeight: 950,
     lineHeight: 1.15,
   },
@@ -10240,15 +10239,15 @@ const styles: Record<string, CSSProperties> = {
   careCardRow: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "16px",
+    gap: "10px",
     minHeight: 0,
   },
 
   careCard: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "24px",
-    padding: "18px",
+    borderRadius: "20px",
+    padding: "12px",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
@@ -10258,17 +10257,17 @@ const styles: Record<string, CSSProperties> = {
 
   careMotionStage: {
     position: "relative",
-    width: "168px",
-    height: "118px",
-    marginBottom: "8px",
+    width: "130px",
+    height: "90px",
+    marginBottom: "4px",
   },
 
   careMotionPlant: {
     position: "absolute",
     left: "40%",
     bottom: "0",
-    width: "70px",
-    height: "70px",
+    width: "56px",
+    height: "56px",
     objectFit: "contain",
     transform: "translateX(-50%)",
   },
@@ -10316,29 +10315,29 @@ const styles: Record<string, CSSProperties> = {
   careTitle: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "22px",
+    fontSize: "17px",
     fontWeight: 900,
   },
 
   statusText: {
-    margin: "8px 0",
+    margin: "5px 0",
     color: "#7B7B67",
-    fontSize: "22px",
+    fontSize: "17px",
     fontWeight: 900,
   },
 
   doneStatusText: {
-    margin: "8px 0",
+    margin: "5px 0",
     color: "#4F8A3C",
-    fontSize: "22px",
+    fontSize: "17px",
     fontWeight: 900,
   },
 
   goalControl: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
-    marginBottom: "12px",
+    gap: "6px",
+    marginBottom: "8px",
   },
 
   goalButton: {
@@ -10365,11 +10364,11 @@ const styles: Record<string, CSSProperties> = {
     background: "#5F8D4E",
     color: "white",
     borderRadius: "999px",
-    padding: "12px 22px",
-    fontSize: "16px",
+    padding: "9px 18px",
+    fontSize: "14px",
     fontWeight: 900,
     cursor: "pointer",
-    boxShadow: "0 8px 18px rgba(95, 141, 78, 0.24)",
+    boxShadow: "0 4px 10px rgba(95, 141, 78, 0.24)",
   },
 
   countButtonDone: {
