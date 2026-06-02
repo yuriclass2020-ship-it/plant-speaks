@@ -7483,7 +7483,7 @@ export default function App() {
                   },
                   {
                     icon: latestSoilRecord ? (latestSoilIcon || "/icons/soil.png") : "/icons/soil.png",
-                    label: soilVisualState === "기록해요" ? "흙 봐줘요" : soilVisualState,
+                    label: soilVisualState === "기록해요" ? "흙 관찰하기" : soilVisualState,
                     faded: !latestSoilRecord,
                     screen: "soilRecord",
                   },
