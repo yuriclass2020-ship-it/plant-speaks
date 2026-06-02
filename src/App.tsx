@@ -7416,7 +7416,7 @@ export default function App() {
                     borderRadius: "12px",
                     border: plantNeedsAttention ? "1.5px solid #E5B84B" : "1px solid #C8DFB4",
                   }}>
-                    <span style={{ fontSize: "18px" }}>💧</span>
+                    <img src="/icons/water.png" alt="물" style={{ width: "22px", height: "22px", objectFit: "contain" }} />
                     <span style={{ fontSize: "13px", fontWeight: 900, color: "#2F4F2F", flex: 1 }}>
                       물 주기 {todayWaterCount}/{careState.waterGoal}회
                     </span>
