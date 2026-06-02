@@ -7435,39 +7435,39 @@ export default function App() {
             {/* 하단: 3개 컬러 카드 */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", flex: 1 }}>
 
-              {/* 🔵 돌보기 */}
+              {/* 🔵 돌봐줘요 */}
               <div style={{
                 background: "linear-gradient(160deg, #E8F4FD, #D1E9F9)",
                 border: "1.5px solid #90CAF9",
                 borderRadius: "22px",
-                padding: "16px 12px",
+                padding: "18px 14px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: "10px",
+                gap: "8px",
               }}>
-                <p style={{ margin: 0, fontSize: "13px", fontWeight: 900, color: "#1565C0" }}>💧 돌봐줘요</p>
+                <p style={{ margin: 0, fontSize: "16px", fontWeight: 900, color: "#1565C0" }}>💧 돌봐줘요</p>
                 <div
-                  style={styles.homeWaterMiniStage}
+                  style={{ ...styles.homeWaterMiniStage, width: "80px", height: "80px" }}
                   className={careMotion === "water" ? "plant-talk-water-active" : ""}
                 >
-                  <img src={mainImagePath} alt={plantDisplayName} className="plant-talk-care-plant" style={styles.homeWaterPlantIcon} />
+                  <img src={mainImagePath} alt={plantDisplayName} className="plant-talk-care-plant" style={{ ...styles.homeWaterPlantIcon, width: "64px", height: "64px" }} />
                   <img src="/icons/water.png" alt="" className="plant-talk-water-can" style={styles.homeWaterDropIcon} />
                 </div>
                 <div style={{ textAlign: "center" }}>
-                  <p style={{ margin: 0, fontSize: "15px", fontWeight: 900, color: "#1565C0" }}>물 주기</p>
-                  <p style={{ margin: "2px 0", fontSize: "13px", color: "#1976D2" }}>{todayWaterCount}/{careState.waterGoal}회</p>
-                  <p style={{ margin: 0, fontSize: "11px", color: "#5B8FB0" }}>{nextWateringText}</p>
+                  <p style={{ margin: 0, fontSize: "18px", fontWeight: 900, color: "#1565C0" }}>물 주기</p>
+                  <p style={{ margin: "3px 0", fontSize: "16px", fontWeight: 700, color: "#1976D2" }}>{todayWaterCount}/{careState.waterGoal}회</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "#5B8FB0" }}>{nextWateringText}</p>
                 </div>
                 <button
                   type="button"
                   style={{
-                    padding: "8px 16px",
-                    borderRadius: "999px",
+                    padding: "10px 0",
+                    borderRadius: "14px",
                     border: "none",
                     background: waterNeedsCare && !waterDoneToday ? "#1976D2" : "#B3D4EF",
                     color: waterNeedsCare && !waterDoneToday ? "#fff" : "#5B8FB0",
-                    fontSize: "13px",
+                    fontSize: "15px",
                     fontWeight: 900,
                     cursor: waterNeedsCare && !waterDoneToday ? "pointer" : "default",
                     width: "100%",
@@ -7478,7 +7478,7 @@ export default function App() {
                   {waterDoneToday ? "완료 ✓" : waterNeedsCare ? "물 줬어요" : "괜찮아요"}
                 </button>
                 {plantWaterSpeech && (
-                  <p style={{ margin: 0, fontSize: "11px", color: "#5B8FB0", textAlign: "center", fontStyle: "italic" }}>
+                  <p style={{ margin: 0, fontSize: "12px", color: "#5B8FB0", textAlign: "center", fontStyle: "italic" }}>
                     {plantWaterSpeech}
                   </p>
                 )}
@@ -7491,74 +7491,73 @@ export default function App() {
                   background: "linear-gradient(160deg, #5FA34E, #3D6B34)",
                   border: "none",
                   borderRadius: "22px",
-                  padding: "16px 12px",
+                  padding: "18px 14px",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
-                  gap: "12px",
+                  gap: "10px",
                   cursor: "pointer",
                   color: "white",
                   boxShadow: "0 6px 16px rgba(60,100,50,0.3)",
                 }}
                 onClick={() => setScreen("chat")}
               >
-                <img src={logoPath} alt="대화하기" style={{ width: "64px", height: "64px", objectFit: "contain" }} />
+                <img src={logoPath} alt="대화하기" style={{ width: "80px", height: "80px", objectFit: "contain" }} />
                 <div style={{ textAlign: "center" }}>
-                  <p style={{ margin: 0, fontSize: "17px", fontWeight: 900 }}>{plantDisplayName}와</p>
-                  <p style={{ margin: "2px 0 0", fontSize: "17px", fontWeight: 900 }}>대화하기</p>
-                  <p style={{ margin: "6px 0 0", fontSize: "12px", opacity: 0.9 }}>
-                    {plant ? "궁금한 거 물어봐!" : "등록하면 대화할 수 있어요"}
+                  <p style={{ margin: 0, fontSize: "20px", fontWeight: 900, lineHeight: 1.3 }}>
+                    {plantDisplayName}와<br />대화하기
+                  </p>
+                  <p style={{ margin: "8px 0 0", fontSize: "13px", opacity: 0.9 }}>
+                    {plant ? "궁금한 거 물어봐! 🌿" : "등록하면 대화할 수 있어요"}
                   </p>
                 </div>
-                <span style={{
-                  width: "36px", height: "36px", borderRadius: "50%",
-                  background: "rgba(255,255,255,0.2)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "18px",
-                }}>→</span>
               </button>
 
-              {/* 🟡 기록하기 */}
+              {/* 🟡 기록해요 */}
               <div style={{
                 background: "linear-gradient(160deg, #FFFDE7, #FFF8C5)",
                 border: "1.5px solid #FFD54F",
                 borderRadius: "22px",
-                padding: "16px 12px",
+                padding: "18px 14px",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
                 gap: "10px",
               }}>
-                <p style={{ margin: 0, fontSize: "13px", fontWeight: 900, color: "#E65100" }}>📋 기록해요</p>
-                <p style={{ margin: 0, fontSize: "12px", color: "#BF7A00", textAlign: "center" }}>오늘 내 모습이에요 👀</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", width: "100%" }}>
+                <p style={{ margin: 0, fontSize: "16px", fontWeight: 900, color: "#E65100" }}>📋 기록해요</p>
+                {/* 3개 아이콘 버튼 — 가로 배치 */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", width: "100%" }}>
                   {[
-                    { icon: latestLeafRecord ? (latestLeafIcon || "/icons/leaf.png") : "/icons/leaf.png", label: leafVisualState === "기록해요" ? "잎 봐줘요" : leafVisualState, faded: !latestLeafRecord, sc: "leafRecord" },
-                    { icon: latestSoilRecord ? (latestSoilIcon || "/icons/soil.png") : "/icons/soil.png", label: soilVisualState === "기록해요" ? "흙 봐줘요" : soilVisualState, faded: !latestSoilRecord, sc: "soilRecord" },
-                    { icon: latestPhotoRecord ? latestPhotoIcon : "/icons/camera.png", label: photoVisualState, faded: !latestPhotoRecord, sc: "photoRecord" },
+                    { icon: latestLeafRecord ? (latestLeafIcon || "/icons/leaf.png") : "/icons/leaf.png", label: leafVisualState === "기록해요" ? "잎" : leafVisualState, faded: !latestLeafRecord, sc: "leafRecord" },
+                    { icon: latestSoilRecord ? (latestSoilIcon || "/icons/soil.png") : "/icons/soil.png", label: soilVisualState === "기록해요" ? "흙" : soilVisualState, faded: !latestSoilRecord, sc: "soilRecord" },
+                    { icon: latestPhotoRecord ? latestPhotoIcon : "/icons/camera.png", label: photoVisualState === "사진 찍기" ? "사진" : photoVisualState, faded: !latestPhotoRecord, sc: "photoRecord" },
                   ].map(({ icon, label, faded, sc }) => (
                     <button
                       key={sc}
                       type="button"
                       onClick={() => setScreen(sc as typeof screen)}
                       style={{
-                        border: "1px solid #FFD54F",
-                        background: "rgba(255,255,255,0.7)",
-                        borderRadius: "12px",
-                        padding: "8px 10px",
+                        border: "1.5px solid #FFD54F",
+                        background: "rgba(255,255,255,0.8)",
+                        borderRadius: "14px",
+                        padding: "10px 4px",
                         display: "flex",
+                        flexDirection: "column",
                         alignItems: "center",
-                        gap: "8px",
+                        gap: "6px",
                         cursor: "pointer",
-                        width: "100%",
                       }}
                     >
-                      <img src={icon} alt={label} style={{ width: "28px", height: "28px", objectFit: "contain", opacity: faded ? 0.3 : 1 }} />
-                      <span style={{ fontSize: "12px", fontWeight: 900, color: "#5D4037" }}>{label}</span>
+                      <img src={icon} alt={label} style={{ width: "36px", height: "36px", objectFit: "contain", opacity: faded ? 0.3 : 1 }} />
+                      <span style={{ fontSize: "13px", fontWeight: 900, color: "#5D4037" }}>{label}</span>
                     </button>
                   ))}
                 </div>
+                {/* 최근 관찰 상태 */}
+                <p style={{ margin: 0, fontSize: "13px", color: "#BF7A00", textAlign: "center" }}>
+                  {recentObservationSpeech}
+                </p>
               </div>
 
             </div>
