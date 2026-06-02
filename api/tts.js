@@ -13,10 +13,10 @@ export default async function handler(req, res) {
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const mp3 = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'shimmer',  // 더 밝고 친근한 목소리
+      model: 'tts-1-hd',  // 더 고품질 모델
+      voice: 'nova',      // 따뜻하고 부드러운 목소리
       input: text.trim().slice(0, 300),
-      speed: 0.85,       // 느리게 — 아이들이 듣기 편하게
+      speed: 0.82,        // 천천히 — 아이들이 듣기 편하게
     });
 
     const buffer = Buffer.from(await mp3.arrayBuffer());
