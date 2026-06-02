@@ -13,10 +13,18 @@ export default async function handler(req, res) {
   try {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const mp3 = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: 'nova',
+      model: 'gpt-4o-mini-tts',
+      voice: 'marin',
       input: text.trim().slice(0, 300),
-      speed: 0.88,
+      instructions: [
+        'Speak in Korean.',
+        'Use a calm, gentle, friendly plant friend voice for young children.',
+        'Keep the same pitch, pace, volume, emotion, and energy every time.',
+        'Speak clearly at a natural, lightly brisk pace for young children.',
+        'Do not sound like a robot, announcer, or serious adult.',
+        'Avoid dramatic acting or exaggerated cuteness.',
+        'Finish the entire sentence without trailing off.',
+      ].join(' '),
     });
 
     const buffer = Buffer.from(await mp3.arrayBuffer());
