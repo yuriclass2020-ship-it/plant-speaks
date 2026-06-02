@@ -7416,7 +7416,24 @@ export default function App() {
                     borderRadius: "12px",
                     border: plantNeedsAttention ? "1.5px solid #E5B84B" : "1px solid #C8DFB4",
                   }}>
-                    <img src="/icons/water.png" alt="물" style={{ width: "22px", height: "22px", objectFit: "contain" }} />
+                    {/* 미니 물주기 애니메이션 스테이지 */}
+                    <div
+                      style={styles.homeWaterMiniStage}
+                      className={careMotion === "water" ? "plant-talk-water-active" : ""}
+                    >
+                      <img
+                        src={mainImagePath}
+                        alt={plantDisplayName}
+                        className="plant-talk-care-plant"
+                        style={styles.homeWaterPlantIcon}
+                      />
+                      <img
+                        src="/icons/water.png"
+                        alt=""
+                        className="plant-talk-water-can"
+                        style={styles.homeWaterDropIcon}
+                      />
+                    </div>
                     <span style={{ fontSize: "13px", fontWeight: 900, color: "#2F4F2F", flex: 1 }}>
                       물 주기 {todayWaterCount}/{careState.waterGoal}회
                     </span>
