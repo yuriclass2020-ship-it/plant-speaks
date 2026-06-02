@@ -7389,13 +7389,13 @@ export default function App() {
                 <img src={dateIconPath} alt="오늘 날짜" style={styles.dateIcon} />
               </div>
 
+              {/* 식물 + 돌봄 통합 카드 */}
               <div style={styles.myPlantCard}>
                 <div style={styles.myPlantTextBox}>
                   <div style={styles.myPlantTopLine}>
                     <p style={styles.sectionLabel}>
                       {hasSelectedChild ? `${activeChildName}의 식물` : "나의 식물"}
                     </p>
-
                     <button
                       type="button"
                       style={styles.editPlantButton}
@@ -7406,10 +7406,49 @@ export default function App() {
                   </div>
 
                   <h2 style={styles.myPlantName}>{plantDisplayName}</h2>
-
                   <p style={styles.myPlantType}>{plantDisplayType}</p>
 
-                  <p style={styles.myPlantDesc}>{plantDisplayMemo}</p>
+                  {/* 물 주기 인라인 */}
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    marginTop: "8px",
+                    padding: "6px 10px",
+                    background: plantNeedsAttention ? "#FFF0C6" : "#EDF5E4",
+                    borderRadius: "12px",
+                    border: plantNeedsAttention ? "1.5px solid #E5B84B" : "1px solid #C8DFB4",
+                  }}>
+                    <span style={{ fontSize: "18px" }}>💧</span>
+                    <span style={{ fontSize: "13px", fontWeight: 900, color: "#2F4F2F", flex: 1 }}>
+                      물 주기 {todayWaterCount}/{careState.waterGoal}회
+                    </span>
+                    <span style={{ fontSize: "11px", color: "#6B7F5A" }}>{nextWateringText}</span>
+                    <button
+                      type="button"
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "999px",
+                        border: "none",
+                        background: waterNeedsCare && !waterDoneToday ? "#4F7C43" : "#C8DFB4",
+                        color: waterNeedsCare && !waterDoneToday ? "#fff" : "#6B7F5A",
+                        fontSize: "12px",
+                        fontWeight: 900,
+                        cursor: waterNeedsCare && !waterDoneToday ? "pointer" : "default",
+                      }}
+                      onClick={() => { if (waterNeedsCare && !waterDoneToday) increaseCount("waterCount"); }}
+                      disabled={!waterNeedsCare || waterDoneToday}
+                    >
+                      {waterDoneToday ? "완료 ✓" : waterNeedsCare ? "물 줬어요" : "괜찮아요"}
+                    </button>
+                  </div>
+
+                  {/* 식물 한마디 */}
+                  {plantWaterSpeech && (
+                    <p style={{ margin: "6px 0 0", fontSize: "12px", color: "#5F704B", fontStyle: "italic" }}>
+                      💬 "{plantWaterSpeech}"
+                    </p>
+                  )}
                 </div>
 
                 <button
@@ -7418,78 +7457,11 @@ export default function App() {
                   onClick={() => speakText(plantStatusSpeech, "plant-status")}
                   title="식물 상태 듣기"
                 >
-                  <img
-                    src={mainImagePath}
-                    alt={plantDisplayName}
-                    style={styles.myPlantImage}
-                  />
+                  <img src={mainImagePath} alt={plantDisplayName} style={styles.myPlantImage} />
                   <span style={styles.myPlantListenHint}>
                     {readingMessageId === "plant-status" ? "말하는 중 🔊" : "눌러봐요 👂"}
                   </span>
                 </button>
-              </div>
-
-              <div style={styles.todayCard}>
-                <p style={styles.sectionLabel}>💧 돌봐줘요</p>
-
-                <div
-                  style={
-                    plantNeedsAttention
-                      ? styles.homeWaterCounterAlert
-                      : styles.homeWaterCounterReady
-                  }
-                >
-                  <div
-                    style={styles.homeWaterMiniStage}
-                    className={careMotion === "water" ? "plant-talk-water-active" : ""}
-                  >
-                    <img
-                      src={mainImagePath}
-                      alt={plantDisplayName}
-                      className="plant-talk-care-plant"
-                      style={styles.homeWaterPlantIcon}
-                    />
-                    <img
-                      src="/icons/water.png"
-                      alt=""
-                      className="plant-talk-water-can"
-                      style={styles.homeWaterDropIcon}
-                    />
-                  </div>
-
-                  <div style={styles.homeWaterCounterTextBox}>
-                    <strong style={styles.homeWaterCounterTitle}>물 주기</strong>
-                    <span style={styles.homeWaterCounterCount}>
-                      {todayWaterCount} / {careState.waterGoal}회
-                    </span>
-                    <span style={styles.homeWaterLabel}>{nextWateringText}</span>
-                  </div>
-
-                  <strong style={styles.homeWaterSpeech}>
-                    {plantDisplayName}: {plantWaterSpeech}
-                  </strong>
-
-                  <button
-                    type="button"
-                    style={
-                      waterNeedsCare && !waterDoneToday
-                        ? styles.homeWaterActionButton
-                        : styles.homeWaterActionButtonDisabled
-                    }
-                    onClick={() => {
-                      if (waterNeedsCare && !waterDoneToday) {
-                        increaseCount("waterCount");
-                      }
-                    }}
-                    disabled={!waterNeedsCare || waterDoneToday}
-                  >
-                    {waterNeedsCare && !waterDoneToday
-                      ? "물 줬어요"
-                      : waterDoneToday
-                      ? "완료"
-                      : "아직 괜찮아요"}
-                  </button>
-                </div>
               </div>
             </section>
 
@@ -7513,16 +7485,15 @@ export default function App() {
                 <span style={styles.chatHeroArrow}>→</span>
               </button>
 
-              <div style={styles.todayCard}>
-                <p style={styles.sectionLabel}>오늘 내 모습이에요 👀</p>
-
-                <div style={styles.visualSummaryCard}>
-                  <div style={styles.visualSummaryHeader}>
-                    <span style={styles.visualSummaryLabel}>기록하기</span>
-                    <strong style={styles.visualSummarySpeech}>
-                      {recentObservationSpeech}
-                    </strong>
-                  </div>
+              <div style={{
+                background: "#FFFFFF",
+                border: "1px solid #E8E1C8",
+                borderRadius: "18px",
+                padding: "10px 12px",
+              }}>
+                <p style={{ ...styles.sectionLabel, marginBottom: "8px" }}>
+                  오늘 내 모습이에요 👀
+                </p>
 
                   <div style={styles.visualSummaryGrid}>
                     <button
@@ -7607,7 +7578,6 @@ export default function App() {
                       <span style={styles.visualSummaryText}>{photoVisualState}</span>
                     </button>
                   </div>
-                </div>
 
                 {newestPhotoRecord?.imageData && (
                   <button
@@ -8000,6 +7970,10 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     gap: "10px",
     minHeight: 0,
+  },
+
+  chatHeroCardLarge: {
+    flex: 1,
   },
 
   dateCard: {
@@ -8491,6 +8465,7 @@ const styles: Record<string, CSSProperties> = {
 
   chatHeroCard: {
     width: "100%",
+    flex: 1,
     background: "linear-gradient(135deg, #5FA34E 0%, #3D6B34 100%)",
     border: "2px solid rgba(255,255,255,0.15)",
     borderRadius: "22px",
