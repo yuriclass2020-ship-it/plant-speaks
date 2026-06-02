@@ -14,8 +14,9 @@ export default async function handler(req, res) {
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const mp3 = await openai.audio.speech.create({
       model: 'tts-1',
-      voice: 'nova',
+      voice: 'shimmer',  // 더 밝고 친근한 목소리
       input: text.trim().slice(0, 300),
+      speed: 0.85,       // 느리게 — 아이들이 듣기 편하게
     });
 
     const buffer = Buffer.from(await mp3.arrayBuffer());

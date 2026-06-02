@@ -4614,8 +4614,8 @@ export default function App() {
     const friendlyVoice = chooseFriendlyKoreanVoice(availableVoices);
 
     utterance.lang = "ko-KR";
-    utterance.rate = 1.08;
-    utterance.pitch = 1.2;
+    utterance.rate = 0.82;   // 느리게 — 아이들이 듣기 편하게
+    utterance.pitch = 1.45;  // 높게 — 아이다운 목소리
     utterance.volume = 1;
 
     if (friendlyVoice) {
