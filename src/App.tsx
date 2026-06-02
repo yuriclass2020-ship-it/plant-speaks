@@ -8230,29 +8230,29 @@ const styles: Record<string, CSSProperties> = {
     width: "64px",
     height: "64px",
     display: "flex",
-    alignItems: "flex-end",
+    alignItems: "center",
     justifyContent: "center",
     borderRadius: "18px",
     background: "rgba(255, 253, 246, 0.78)",
-    overflow: "hidden",
   },
 
   homeWaterPlantIcon: {
-    width: "56px",
-    height: "56px",
+    width: "52px",
+    height: "52px",
     objectFit: "contain",
     position: "relative",
     zIndex: 1,
-    marginBottom: "7px",
+    marginBottom: "0px",
   },
 
   homeWaterDropIcon: {
-    width: "22px",
-    height: "22px",
+    width: "20px",
+    height: "20px",
     objectFit: "contain",
     position: "absolute",
-    top: "2px",
-    right: "4px",
+    top: "-8px",
+    right: "-6px",
+    zIndex: 2,
   },
 
   homeWaterCounterTextBox: {
