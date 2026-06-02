@@ -2567,7 +2567,7 @@ export default function App() {
   ]);
 
   const plantDisplayName = plant?.name || "초록이";
-  const plantDisplayType = plant?.type || "저를 등록해줘요! 🌱";
+  const plantDisplayType = plant?.type || "등록해주세요! 🌱";
   const plantDisplayMemo = plant?.memo || "이름이랑 종류를 알려주면 대화할 수 있어요.";
   const teacherInfo = plant?.teacherInfo;
   const speciesPreset = getSpeciesPresetFromPlantType(plantDisplayType);
@@ -7477,7 +7477,7 @@ export default function App() {
                 {[
                   {
                     icon: latestLeafRecord ? (latestLeafIcon || "/icons/leaf.png") : "/icons/leaf.png",
-                    label: leafVisualState === "기록해요" ? "잎 봐줘요" : leafVisualState,
+                    label: leafVisualState === "기록해요" ? "잎 관찰하기" : leafVisualState,
                     faded: !latestLeafRecord,
                     screen: "leafRecord",
                   },
@@ -8759,18 +8759,18 @@ const styles: Record<string, CSSProperties> = {
 
   tabMainLayout: {
     flex: 1,
-    padding: "18px 24px",
+    padding: "10px 16px",
     display: "grid",
-    gridTemplateColumns: "280px 1fr",
-    gap: "22px",
+    gridTemplateColumns: "220px 1fr",
+    gap: "14px",
     minHeight: 0,
   },
 
   sideInfoCard: {
     background: "#F6F1DE",
     border: "1px solid #E4DABF",
-    borderRadius: "26px",
-    padding: "28px 22px",
+    borderRadius: "22px",
+    padding: "16px 16px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
@@ -8779,26 +8779,26 @@ const styles: Record<string, CSSProperties> = {
   },
 
   sideInfoIcon: {
-    width: "100px",
-    height: "100px",
+    width: "72px",
+    height: "72px",
     objectFit: "contain",
-    marginBottom: "18px",
+    marginBottom: "10px",
   },
 
   sideInfoTitle: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "24px",
+    fontSize: "18px",
     fontWeight: 900,
     wordBreak: "keep-all",
   },
 
   sideInfoText: {
-    margin: "12px 0 0",
+    margin: "8px 0 0",
     color: "#6B7F5A",
-    fontSize: "16px",
+    fontSize: "13px",
     fontWeight: 700,
-    lineHeight: 1.55,
+    lineHeight: 1.5,
     wordBreak: "keep-all",
   },
 
@@ -8853,14 +8853,14 @@ const styles: Record<string, CSSProperties> = {
   horizontalCardGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
-    gap: "18px",
+    gap: "12px",
   },
 
   largeFeatureCard: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "26px",
-    padding: "24px 18px",
+    borderRadius: "20px",
+    padding: "16px 12px",
     textAlign: "center",
     cursor: "pointer",
     boxShadow: "0 4px 10px rgba(80, 80, 60, 0.06)",
@@ -8871,24 +8871,24 @@ const styles: Record<string, CSSProperties> = {
   },
 
   featureIcon: {
-    width: "96px",
-    height: "96px",
+    width: "64px",
+    height: "64px",
     objectFit: "contain",
-    marginBottom: "16px",
+    marginBottom: "10px",
   },
 
   featureTitle: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "23px",
+    fontSize: "17px",
     fontWeight: 900,
     wordBreak: "keep-all",
   },
 
   featureDesc: {
-    margin: "10px 0 0",
+    margin: "6px 0 0",
     color: "#7B7B67",
-    fontSize: "16px",
+    fontSize: "13px",
     fontWeight: 700,
     lineHeight: 1.45,
     wordBreak: "keep-all",
@@ -10190,10 +10190,10 @@ const styles: Record<string, CSSProperties> = {
 
   careLayout: {
     flex: 1,
-    padding: "14px 24px",
+    padding: "10px 16px",
     display: "grid",
-    gridTemplateColumns: "260px 1fr",
-    gap: "18px",
+    gridTemplateColumns: "220px 1fr",
+    gap: "14px",
     minHeight: 0,
     overflowY: "auto",
   },
@@ -10660,9 +10660,10 @@ const styles: Record<string, CSSProperties> = {
   exampleBox: {
     background: "#F3EEDC",
     borderRadius: "18px",
-    padding: "12px 14px",
-    display: "grid",
-    gap: "10px",
+    padding: "8px 12px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
   },
 
   chatComposer: {
@@ -10685,20 +10686,25 @@ const styles: Record<string, CSSProperties> = {
   },
 
   quickQuestionGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: "8px",
+    display: "flex",
+    flexDirection: "row",
+    gap: "6px",
+    overflowX: "auto",
+    scrollbarWidth: "none",
+    paddingBottom: "2px",
   },
 
   quickQuestionButton: {
     border: "1px solid #D8CFB3",
     background: "#FFFFFF",
     color: "#345A2F",
-    borderRadius: "16px",
-    padding: "10px 8px",
-    fontSize: "14px",
+    borderRadius: "999px",
+    padding: "6px 12px",
+    fontSize: "13px",
     fontWeight: 900,
     lineHeight: 1.2,
+    flexShrink: 0,
+    whiteSpace: "nowrap",
     cursor: "pointer",
     wordBreak: "keep-all",
   },
