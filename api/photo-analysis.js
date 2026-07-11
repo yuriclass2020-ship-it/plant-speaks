@@ -1,5 +1,12 @@
 import OpenAI from 'openai';
 
+function getOpenAiApiKey(req) {
+  const headerKey = req.headers['x-openai-api-key'];
+  const bodyKey = req.body?.openAiApiKey;
+  const key = typeof headerKey === 'string' ? headerKey : bodyKey;
+  return typeof key === 'string' ? key.trim() : '';
+}
+
 function buildSystemPrompt() {
   return `너는 어린이 교실 식물 관찰 앱의 사진 분석 AI야.
 선생님이 교실 식물 사진을 올리면, 실제로 사진에서 보이는 것만 분석해서 알려줘.
@@ -95,7 +102,12 @@ export default async function handler(req, res) {
   const safeType = (typeof plantType === 'string' && plantType.trim()) ? plantType.trim() : '종류 미확인';
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const apiKey = getOpenAiApiKey(req);
+    if (!apiKey) {
+      return res.status(400).json({ ok: false, error: 'OpenAI API 키가 필요합니다.' });
+    }
+
+    const openai = new OpenAI({ apiKey });
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',

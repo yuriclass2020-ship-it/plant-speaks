@@ -1,8 +1,20 @@
 import OpenAI from 'openai';
 
+async function getOpenAiApiKey(req) {
+  const headerKey = req.headers['x-openai-api-key'];
+  const bodyKey = req.body?.openAiApiKey;
+  const key = typeof headerKey === 'string' ? headerKey : bodyKey;
+  return typeof key === 'string' ? key.trim() : '';
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  const apiKey = await getOpenAiApiKey(req);
+  if (!apiKey) {
+    return res.status(400).json({ ok: false, error: 'OpenAI API 키가 필요합니다.' });
   }
 
   const { text } = req.body ?? {};
@@ -11,7 +23,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey });
     const mp3 = await openai.audio.speech.create({
       model: 'gpt-4o-mini-tts',
       voice: 'marin',

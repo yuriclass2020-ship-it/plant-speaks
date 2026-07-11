@@ -100,6 +100,13 @@ ${childAnswerHints ? `- 아이 질문 답변 힌트: ${childAnswerHints}` : ''}
 - 확인되지 않은 정보를 사실처럼 말하기`;
 }
 
+function getOpenAiApiKey(req) {
+  const headerKey = req.headers['x-openai-api-key'];
+  const bodyKey = req.body?.openAiApiKey;
+  const key = typeof headerKey === 'string' ? headerKey : bodyKey;
+  return typeof key === 'string' ? key.trim() : '';
+}
+
 function sanitize(text) {
   if (typeof text !== 'string' || !text.trim()) return null;
   const cleaned = text
@@ -141,7 +148,12 @@ export default async function handler(req, res) {
   const safeType = (typeof plantType === 'string' && plantType.trim()) ? plantType.trim() : '식물';
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const apiKey = getOpenAiApiKey(req);
+    if (!apiKey) {
+      return res.status(400).json({ ok: false, error: 'OpenAI API 키가 필요합니다.' });
+    }
+
+    const openai = new OpenAI({ apiKey });
 
     const systemPrompt = buildSystemPrompt({
       plantName: safeName,

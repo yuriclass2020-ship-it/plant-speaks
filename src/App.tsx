@@ -189,6 +189,7 @@ const API_PLANT_INFO_DRAFT_URL = "/api/plant-info-draft";
 const API_TTS_URL = "/api/tts";
 const API_PHOTO_ANALYSIS_URL = "/api/photo-analysis";
 const API_CHAT_ANSWER_URL = "/api/chat-answer";
+const OPENAI_API_KEY_STORAGE_KEY = "plant-speaks-openai-api-key";
 const CARE_REACTION_SPEECH: Record<"waterCount" | "sunCount", string> = {
   waterCount: "고마워. 시원해!",
   sunCount: "따뜻해. 고마워!",
@@ -207,6 +208,16 @@ function getTestAccessHeaders(): HeadersInit {
   return {
     "Content-Type": "application/json",
   };
+}
+
+function getApiHeaders(openAiApiKey?: string): HeadersInit {
+  const headers: HeadersInit = { ...getTestAccessHeaders() };
+
+  if (openAiApiKey?.trim()) {
+    headers["x-openai-api-key"] = openAiApiKey.trim();
+  }
+
+  return headers;
 }
 
 function clearTestAccessCodeIfNeeded(response: Response) {
@@ -351,7 +362,8 @@ async function saveStateToDb(state: DbAppState) {
 }
 
 async function loadPlantInfoDraftFromServer(
-  plantType: string
+  plantType: string,
+  openAiApiKey?: string
 ): Promise<{
   draft: TeacherPlantInfo;
   source?: string;
@@ -359,7 +371,7 @@ async function loadPlantInfoDraftFromServer(
 } | null> {
   const response = await fetch(API_PLANT_INFO_DRAFT_URL, {
     method: "POST",
-    headers: getTestAccessHeaders(),
+    headers: getApiHeaders(openAiApiKey),
     body: JSON.stringify({ plantType }),
   });
   const data = (await response.json()) as {
@@ -386,14 +398,16 @@ async function loadPhotoAnalysisFromServer({
   plantName,
   plantType,
   imageData,
+  openAiApiKey,
 }: {
   plantName: string;
   plantType: string;
   imageData: string;
+  openAiApiKey?: string;
 }): Promise<PhotoAnalysis> {
   const response = await fetch(API_PHOTO_ANALYSIS_URL, {
     method: "POST",
-    headers: getTestAccessHeaders(),
+    headers: getApiHeaders(openAiApiKey),
     body: JSON.stringify({ plantName, plantType, imageData }),
   });
   const data = (await response.json()) as {
@@ -420,6 +434,7 @@ async function loadChatAnswerFromServer({
   careState,
   recentRecords,
   latestPhotoAnalysis,
+  openAiApiKey,
 }: {
   question: string;
   fallbackAnswer: string;
@@ -429,10 +444,11 @@ async function loadChatAnswerFromServer({
   careState: CareState;
   recentRecords: ObservationRecord[];
   latestPhotoAnalysis?: PhotoAnalysis;
+  openAiApiKey?: string;
 }): Promise<string> {
   const response = await fetch(API_CHAT_ANSWER_URL, {
     method: "POST",
-    headers: getTestAccessHeaders(),
+    headers: getApiHeaders(openAiApiKey),
     body: JSON.stringify({
       question,
       fallbackAnswer,
@@ -1272,10 +1288,10 @@ function playDingDongSound() {
   );
 }
 
-async function requestTtsObjectUrl(text: string) {
+async function requestTtsObjectUrl(text: string, openAiApiKey?: string) {
   const response = await fetch(API_TTS_URL, {
     method: "POST",
-    headers: getTestAccessHeaders(),
+    headers: getApiHeaders(openAiApiKey),
     body: JSON.stringify({ text }),
   });
 
@@ -1970,6 +1986,9 @@ export default function App() {
     dateKey: "",
     count: 0,
   });
+  const [openAiApiKey, setOpenAiApiKey] = useState("");
+  const [openAiApiKeyError, setOpenAiApiKeyError] = useState("");
+  const [showOpenAiKeyPanel, setShowOpenAiKeyPanel] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState("");
   const [currentChildName, setCurrentChildName] = useState("");
@@ -2133,6 +2152,7 @@ export default function App() {
     let localChildRoster: string[] = [];
     let localAiChatCache: Record<string, string> = {};
     let localAiChatUsage: AiChatUsage = { dateKey: todayKey, count: 0 };
+    let localOpenAiApiKey = "";
 
     const savedCareState = localStorage.getItem(CARE_STORAGE_KEY);
 
@@ -2221,6 +2241,11 @@ export default function App() {
       }
     }
 
+    const savedOpenAiApiKey = localStorage.getItem(OPENAI_API_KEY_STORAGE_KEY);
+    if (savedOpenAiApiKey) {
+      localOpenAiApiKey = savedOpenAiApiKey;
+    }
+
     async function loadInitialState() {
       let nextState: DbAppState = {
         plant: localPlant,
@@ -2283,6 +2308,7 @@ export default function App() {
       setTeacherClassificationInfo(
         nextState.plant?.teacherInfo?.classificationInfo ?? ""
       );
+      setOpenAiApiKey(localOpenAiApiKey);
       setTeacherNameStoryInfo(nextState.plant?.teacherInfo?.nameStoryInfo ?? "");
       setTeacherEdibleInfo(nextState.plant?.teacherInfo?.edibleInfo ?? "");
       setTeacherFlowerInfo(nextState.plant?.teacherInfo?.flowerInfo ?? "");
@@ -2345,6 +2371,7 @@ export default function App() {
       setCurrentChildName(nextState.currentChildName ?? "");
       setAiChatCache(localAiChatCache);
       setAiChatUsage(localAiChatUsage);
+      setOpenAiApiKey(localOpenAiApiKey);
       setIsStateLoaded(true);
     }
 
@@ -2364,6 +2391,15 @@ export default function App() {
       localStorage.removeItem(CHILD_STORAGE_KEY);
     }
   }, [currentChildName]);
+
+  useEffect(() => {
+    if (openAiApiKey.trim()) {
+      localStorage.setItem(OPENAI_API_KEY_STORAGE_KEY, openAiApiKey.trim());
+      setOpenAiApiKeyError("");
+    } else {
+      localStorage.removeItem(OPENAI_API_KEY_STORAGE_KEY);
+    }
+  }, [openAiApiKey]);
 
   useEffect(() => {
     if (screen !== "chat") return;
@@ -3374,7 +3410,10 @@ export default function App() {
     });
 
     try {
-      const result = await loadPlantInfoDraftFromServer(normalizedPlantType);
+      const result = await loadPlantInfoDraftFromServer(
+        normalizedPlantType,
+        openAiApiKey
+      );
       applyTeacherInfoDraft(
         result?.draft ?? createTeacherInfoDraft(normalizedPlantType)
       );
@@ -4520,6 +4559,7 @@ export default function App() {
         careState,
         recentRecords: currentPlantRecords.slice(-6),
         latestPhotoAnalysis,
+        openAiApiKey,
       });
 
       setChatMessages((prev) =>
@@ -4589,7 +4629,7 @@ export default function App() {
     audioPreloadRef.current.add(audioCacheKey);
 
     try {
-      const audioUrl = await requestTtsObjectUrl(speechText);
+      const audioUrl = await requestTtsObjectUrl(speechText, openAiApiKey);
       audioUrlCacheRef.current[audioCacheKey] = audioUrl;
     } catch {
       // Preload is best-effort; the button can still fall back later.
@@ -4662,7 +4702,7 @@ export default function App() {
       let audioUrl = audioUrlCacheRef.current[audioCacheKey];
 
       if (!audioUrl) {
-        audioUrl = await requestTtsObjectUrl(speechText);
+        audioUrl = await requestTtsObjectUrl(speechText, openAiApiKey);
         audioUrlCacheRef.current[audioCacheKey] = audioUrl;
       }
 
@@ -4934,6 +4974,7 @@ export default function App() {
         plantName: record.plantName || plantDisplayName,
         plantType: record.plantType || plantDisplayType,
         imageData: record.imageData,
+        openAiApiKey,
       });
 
       setRecords((prev) =>
@@ -4999,84 +5040,166 @@ export default function App() {
     );
   };
 
-  const renderTopBar = (title: string, desc: string) => {
-    return (
-      <header style={styles.topBar}>
-        <div style={styles.topBarLeft}>
-          <img src={mainImagePath} alt="식물" style={styles.topBarIcon} />
+  const renderOpenAiKeyPanel = () => {
+    if (!showOpenAiKeyPanel) return null;
 
-          <div>
-            <h1 style={styles.topBarTitle}>{title}</h1>
-            <p style={styles.topBarDesc}>{desc}</p>
+    return (
+      <div style={styles.apiKeyModalBackdrop}>
+        <div style={styles.apiKeyModalCard}>
+          <div style={styles.apiKeyModalHeader}>
+            <div>
+              <h2 style={styles.apiKeyModalTitle}>OpenAI API 키</h2>
+              <p style={styles.apiKeyModalDesc}>
+                오픈AI 사용 요금은 입력한 키 소유자에게 청구됩니다.
+              </p>
+            </div>
+            <button
+              type="button"
+              style={styles.apiKeyModalCloseButton}
+              onClick={() => setShowOpenAiKeyPanel(false)}
+            >
+              ×
+            </button>
+          </div>
+
+          <input
+            type="password"
+            value={openAiApiKey}
+            onChange={(event) => setOpenAiApiKey(event.target.value)}
+            placeholder="sk-..."
+            style={styles.apiKeyInput}
+          />
+
+          <p style={styles.apiKeyErrorText}>
+            {openAiApiKeyError ||
+              (openAiApiKey.trim()
+                ? "키가 저장되었습니다. 다시 입력하면 교체됩니다."
+                : "키를 입력하면 브라우저에 안전하게 저장됩니다.")}
+          </p>
+
+          <div style={styles.apiKeyActions}>
+            <button
+              type="button"
+              style={styles.saveButton}
+              onClick={() => {
+                if (!openAiApiKey.trim()) {
+                  setOpenAiApiKeyError("API 키를 입력해 주세요.");
+                  return;
+                }
+                setShowOpenAiKeyPanel(false);
+              }}
+            >
+              닫기
+            </button>
+            {openAiApiKey.trim() && (
+              <button
+                type="button"
+                style={styles.apiKeyRemoveButton}
+                onClick={() => {
+                  setOpenAiApiKey("");
+                  setOpenAiApiKeyError("");
+                  setShowOpenAiKeyPanel(false);
+                }}
+              >
+                삭제
+              </button>
+            )}
           </div>
         </div>
+      </div>
+    );
+  };
 
-        <div style={styles.topBarActions}>
-          <label style={styles.childNameBox}>
-            <span>아이</span>
-            <input
-              value={childSearchText}
-              onChange={(event) => setChildSearchText(event.target.value)}
-              onFocus={() => setChildSearchText("")}
-              placeholder={currentChildName || "검색"}
-              style={styles.childNameSelect}
-            />
+  const renderTopBar = (title: string, desc: string) => {
+    return (
+      <>
+        <header style={styles.topBar}>
+          <div style={styles.topBarLeft}>
+            <img src={mainImagePath} alt="식물" style={styles.topBarIcon} />
 
-            {childSearchText && (
-              <div style={styles.childSearchPopover}>
-                {filteredChildNames.length > 0 ? (
-                  filteredChildNames.map((childName) => (
+            <div>
+              <h1 style={styles.topBarTitle}>{title}</h1>
+              <p style={styles.topBarDesc}>{desc}</p>
+            </div>
+          </div>
+
+          <div style={styles.topBarActions}>
+            <label style={styles.childNameBox}>
+              <span>아이</span>
+              <input
+                value={childSearchText}
+                onChange={(event) => setChildSearchText(event.target.value)}
+                onFocus={() => setChildSearchText("")}
+                placeholder={currentChildName || "검색"}
+                style={styles.childNameSelect}
+              />
+
+              {childSearchText && (
+                <div style={styles.childSearchPopover}>
+                  {filteredChildNames.length > 0 ? (
+                    filteredChildNames.map((childName) => (
+                      <button
+                        key={childName}
+                        type="button"
+                        style={styles.childSearchOption}
+                        onClick={() => selectChildName(childName)}
+                      >
+                        {childName}
+                      </button>
+                    ))
+                  ) : (
                     <button
-                      key={childName}
                       type="button"
                       style={styles.childSearchOption}
-                      onClick={() => selectChildName(childName)}
+                      onClick={() => {
+                        const trimmedSearchText = childSearchText.trim();
+                        if (!trimmedSearchText) return;
+                        const nextRoster = getUniqueChildNames([
+                          ...knownChildNames,
+                          trimmedSearchText,
+                        ]);
+                        setChildRoster(nextRoster);
+                        selectChildName(trimmedSearchText);
+                      }}
                     >
-                      {childName}
+                      “{childSearchText}” 추가
                     </button>
-                  ))
-                ) : (
-                  <button
-                    type="button"
-                    style={styles.childSearchOption}
-                    onClick={() => {
-                      const trimmedSearchText = childSearchText.trim();
-                      if (!trimmedSearchText) return;
-                      const nextRoster = getUniqueChildNames([
-                        ...knownChildNames,
-                        trimmedSearchText,
-                      ]);
-                      setChildRoster(nextRoster);
-                      selectChildName(trimmedSearchText);
-                    }}
-                  >
-                    “{childSearchText}” 추가
-                  </button>
-                )}
-              </div>
-            )}
-          </label>
+                  )}
+                </div>
+              )}
+            </label>
 
-          <button
-            type="button"
-            style={styles.childAddButton}
-            onClick={() => setScreen("start")}
-          >
-            다른 아이
-          </button>
+            <button
+              type="button"
+              style={styles.childAddButton}
+              onClick={() => setScreen("start")}
+            >
+              다른 아이
+            </button>
 
-          <button
-            type="button"
-            style={styles.installButton}
-            onClick={installApp}
-          >
-            <img src="/icons/home.png" alt="앱 설치" style={styles.settingsIcon} />
-            <span>{isAppInstalled ? "설치됨" : "앱 설치"}</span>
-          </button>
+            <button
+              type="button"
+              style={styles.apiKeyButton}
+              onClick={() => setShowOpenAiKeyPanel(true)}
+            >
+              OpenAI 키
+            </button>
 
-          {/* 답변 테스트 버튼 — 내부 개발용, 배포 환경에서는 숨김 */}
-        </div>
-      </header>
+            <button
+              type="button"
+              style={styles.installButton}
+              onClick={installApp}
+            >
+              <img src="/icons/home.png" alt="앱 설치" style={styles.settingsIcon} />
+              <span>{isAppInstalled ? "설치됨" : "앱 설치"}</span>
+            </button>
+
+            {/* 답변 테스트 버튼 — 내부 개발용, 배포 환경에서는 숨김 */}
+          </div>
+        </header>
+
+        {renderOpenAiKeyPanel()}
+      </>
     );
   };
 
@@ -7883,9 +8006,106 @@ const styles: Record<string, CSSProperties> = {
     objectFit: "contain",
   },
 
+    apiKeyButton: {
+      border: "1px solid #C7DFC2",
+      background: "#F2F7EA",
+      color: "#3F6B34",
+      borderRadius: "999px",
+      padding: "10px 14px",
+      fontSize: "13px",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+
+    apiKeyModalBackdrop: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0, 0, 0, 0.24)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 9999,
+      padding: "20px",
+    },
+
+    apiKeyModalCard: {
+      width: "min(520px, 100%)",
+      background: "#FFFFFF",
+      borderRadius: "24px",
+      padding: "24px",
+      boxShadow: "0 18px 40px rgba(0,0,0,0.12)",
+      display: "flex",
+      flexDirection: "column",
+      gap: "16px",
+    },
+
+    apiKeyModalHeader: {
+      display: "flex",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: "12px",
+    },
+
+    apiKeyModalTitle: {
+      margin: 0,
+      fontSize: "20px",
+      fontWeight: 900,
+      color: "#2F4F2F",
+    },
+
+    apiKeyModalDesc: {
+      margin: "8px 0 0",
+      color: "#5B4A21",
+      fontSize: "14px",
+      lineHeight: 1.5,
+    },
+
+    apiKeyModalCloseButton: {
+      border: "none",
+      background: "transparent",
+      color: "#5B4A21",
+      fontSize: "24px",
+      fontWeight: 900,
+      cursor: "pointer",
+      lineHeight: 1,
+    },
+
+    apiKeyInput: {
+      width: "100%",
+      border: "1px solid #E8E1C8",
+      borderRadius: "16px",
+      padding: "14px 16px",
+      fontSize: "15px",
+      outline: "none",
+      color: "#2F4F2F",
+    },
+
+    apiKeyErrorText: {
+      margin: 0,
+      color: "#8E2E1A",
+      fontSize: "13px",
+      minHeight: "20px",
+    },
+
+    apiKeyActions: {
+      display: "flex",
+      gap: "10px",
+      justifyContent: "flex-end",
+      flexWrap: "wrap",
+    },
+
+    apiKeyRemoveButton: {
+      border: "1px solid #E9C879",
+      background: "#FFF1D6",
+      color: "#8E5B2F",
+      borderRadius: "999px",
+      padding: "10px 16px",
+      fontSize: "14px",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+
   homeLayout: {
-    flex: 1,
-    padding: "10px 16px 14px",
     display: "grid",
     gridTemplateColumns: "1fr 0.95fr",
     gap: "12px",

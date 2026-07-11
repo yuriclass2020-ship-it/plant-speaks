@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "maeum",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "-l", "4173", "C:/Users/yl940/Desktop/maeum-emotion-school"],
+      "port": 4173
+    },
+    {
+      "name": "nori-lab",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "C:/Users/yl940/Desktop/nori-lab"],
+      "port": 5199
+    }
+  ]
+}
