@@ -1026,37 +1026,36 @@ function buildChildCurriculumReport(
     "건강",
     "잘자라",
   ]);
+  const joinAnalysisText = (...parts: Array<string | false | null | undefined>) =>
+    parts.filter((part): part is string => Boolean(part?.trim())).join(" ");
 
-  const emptyText = `${normalizedChildName}의 기록이 아직 적어요. 잎, 흙, 사진 기록이나 질문이 쌓이면 더 구체적으로 볼 수 있어요.`;
   const questionEvidence =
     latestQuestions.length > 0
       ? `최근 질문: "${latestQuestions.join('", "')}"`
-      : "아직 질문 기록은 없어요.";
+      : "";
   const recordEvidence =
     latestRecords.length > 0
       ? `최근 기록: ${latestRecords
           .map((record) => `${record.title}(${record.date})`)
           .join(", ")}`
-      : "아직 관찰 기록은 없어요.";
+      : "";
   const photoEvidence = latestPhotoAnalysis
     ? `사진 분석에서는 "${latestPhotoAnalysis.summary}"라고 남아 있어요.`
-    : photoRecords.length > 0
-      ? "사진 기록은 있지만 AI 분석 내용은 아직 적어요."
-      : "사진 기록은 아직 없어요.";
+    : "";
   const leafEvidence =
     leafRecords.length > 0
       ? `잎 기록에는 ${leafRecords
           .slice(-2)
           .map((record) => record.title)
           .join(", ")} 같은 표현이 있어요.`
-      : "잎 기록은 아직 없어요.";
+      : "";
   const soilEvidence =
     soilRecords.length > 0
       ? `흙 기록에는 ${soilRecords
           .slice(-2)
           .map((record) => record.title)
           .join(", ")} 같은 표현이 있어요.`
-      : "흙 기록은 아직 없어요.";
+      : "";
   const expressionEvidence =
     childRecords
       .map((record) => record.memo)
@@ -1070,22 +1069,33 @@ function buildChildCurriculumReport(
         title: "탐구과정 즐기기",
         text:
           inquiryQuestionCount > 0 || childRecords.length > 1
-            ? `${normalizedChildName}은 ${questionEvidence} ${recordEvidence}처럼 질문과 반복 기록으로 변화를 확인하려는 모습이 보여요.`
-            : emptyText,
+            ? joinAnalysisText(
+                `${normalizedChildName}은`,
+                questionEvidence,
+                recordEvidence,
+                "질문과 반복 기록으로 변화를 확인하려는 모습이 보여요."
+              )
+            : "",
       },
       {
         title: "생활 속에서 탐구하기",
         text:
           soilRecords.length > 0 || careQuestionCount > 0
-            ? `${soilEvidence} 물, 흙, 햇빛을 식물 상태와 연결해 보려는 시도가 보여요.`
-            : "아직 물, 흙, 햇빛 조건을 연결한 기록은 적어요. 돌보기 질문이나 흙 기록을 더 남기면 좋아요.",
+            ? joinAnalysisText(
+                soilEvidence,
+                "물, 흙, 햇빛을 식물 상태와 연결해 보려는 시도가 보여요."
+              )
+            : "",
       },
       {
         title: "자연과 더불어 살기",
         text:
           hasAffection || photoRecords.length > 0
-            ? `${photoEvidence} 식물을 조심히 살피고 돌봄이 필요한 대상으로 대하는 태도를 볼 수 있어요.`
-            : "식물을 생명체로 조심히 대하는 표현이 더 쌓이면 이 부분을 구체적으로 볼 수 있어요.",
+            ? joinAnalysisText(
+                photoEvidence,
+                "식물을 조심히 살피고 돌봄이 필요한 대상으로 대하는 태도를 볼 수 있어요."
+              )
+            : "",
       },
     ],
     communication: [
@@ -1093,15 +1103,23 @@ function buildChildCurriculumReport(
         title: "듣기와 말하기",
         text:
           questionCount > 0
-            ? `${normalizedChildName}은 식물에게 ${questionCount}번 질문했어요. ${questionEvidence}처럼 자기 궁금증을 말로 표현했어요.`
-            : "아직 식물에게 남긴 질문이 없어요. 말로 질문하면 의사소통 흐름을 볼 수 있어요.",
+            ? joinAnalysisText(
+                `${normalizedChildName}은 식물에게 ${questionCount}번 질문했어요.`,
+                questionEvidence,
+                "자기 궁금증을 말로 표현했어요."
+              )
+            : "",
       },
       {
         title: "읽기와 쓰기에 관심 가지기",
         text:
           childRecords.length > 0
-            ? `그림 카드와 사진으로 ${childRecords.length}개의 기록을 남겼어요. ${leafEvidence} 선택한 그림과 사진으로 관찰 의미를 표현했어요.`
-            : "아직 남긴 관찰 기록이 없어요. 그림 카드 선택도 쓰기 전 단계의 의미 표현으로 볼 수 있어요.",
+            ? joinAnalysisText(
+                `그림 카드와 사진으로 ${childRecords.length}개의 기록을 남겼어요.`,
+                leafEvidence,
+                "선택한 그림과 사진으로 관찰 의미를 표현했어요."
+              )
+            : "",
       },
       {
         title: "책과 이야기 즐기기",
@@ -1109,8 +1127,11 @@ function buildChildCurriculumReport(
           hasAffection || expressionCount > 0
             ? expressionEvidence
               ? `메모에 "${expressionEvidence}"라고 남기며 자기 생각과 느낌을 이야기처럼 표현했어요.`
-              : `${questionEvidence} 식물을 대화 상대처럼 여기며 자기 생각과 느낌을 표현하려는 모습이 보여요.`
-            : "식물에게 느낀 점이나 상상 질문을 남기면 이야기 표현을 더 잘 볼 수 있어요.",
+              : joinAnalysisText(
+                  questionEvidence,
+                  "식물을 대화 상대처럼 여기며 자기 생각과 느낌을 표현하려는 모습이 보여요."
+                )
+            : "",
       },
     ],
   };
