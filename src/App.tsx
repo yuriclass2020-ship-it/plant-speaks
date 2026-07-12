@@ -8139,7 +8139,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "1fr 0.95fr",
     gap: "10px",
     minHeight: 0,
-    overflow: "hidden",
+    overflowY: "auto",
     alignItems: "stretch",
   },
 
@@ -8148,7 +8148,7 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     gap: "7px",
     minHeight: 0,
-    overflow: "hidden",
+    overflowY: "auto",
   },
 
   homeRightColumn: {
@@ -8156,7 +8156,7 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     gap: "8px",
     minHeight: 0,
-    overflow: "hidden",
+    overflowY: "auto",
   },
 
   chatHeroCardLarge: {
@@ -9151,7 +9151,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "190px 1fr",
     gap: "12px",
     minHeight: 0,
-    overflow: "hidden",
+    overflowY: "auto",
   },
 
   photoRecordLayout: {
@@ -9161,7 +9161,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "220px 1fr",
     gap: "12px",
     minHeight: 0,
-    overflow: "hidden",
+    overflowY: "auto",
   },
 
   observationSideCard: {
@@ -9390,8 +9390,9 @@ const styles: Record<string, CSSProperties> = {
 
   recordListPanel: {
     minHeight: 0,
-    overflow: "hidden",
-    paddingRight: 0,
+    overflowY: "auto",
+    paddingRight: "4px",
+    paddingBottom: "12px",
   },
 
   recordDateFilterBox: {
@@ -10711,7 +10712,7 @@ const styles: Record<string, CSSProperties> = {
   chatMessageList: {
     flex: 1,
     minHeight: 0,
-    overflow: "hidden",
+    overflowY: "auto",
     display: "flex",
     flexDirection: "column",
     justifyContent: "flex-end",
@@ -10970,7 +10971,7 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: "6px",
-    overflow: "hidden",
+    overflow: "visible",
   },
 
   quickQuestionButton: {
