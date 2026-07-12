@@ -1663,6 +1663,13 @@ function classifyPlantQuestion(questionText: string) {
   ]);
   const saysAffection =
     !asksAboutPlantPreference &&
+    !asksAboutWater &&
+    !asksAboutSun &&
+    !asksAboutSoil &&
+    !asksAboutLeaf &&
+    !asksAboutPain &&
+    !asksAboutEating &&
+    !asksAboutHungry &&
     !asksAboutRain &&
     includesAny(compactQuestion, [
       "사랑해",
@@ -10928,9 +10935,9 @@ const styles: Record<string, CSSProperties> = {
   quickQuestionGrid: {
     display: "flex",
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: "6px",
-    overflowX: "auto",
-    scrollbarWidth: "none",
+    overflow: "visible",
     paddingBottom: "2px",
   },
 
@@ -10943,7 +10950,7 @@ const styles: Record<string, CSSProperties> = {
     fontSize: "13px",
     fontWeight: 900,
     lineHeight: 1.2,
-    flexShrink: 0,
+    flex: "0 1 auto",
     whiteSpace: "nowrap",
     cursor: "pointer",
     wordBreak: "keep-all",
