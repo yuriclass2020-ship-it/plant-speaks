@@ -1886,33 +1886,19 @@ function shouldUseAiChatFallback(questionText: string) {
   if (!isPlantChatScope) return true;
 
   const shouldStayLocal =
-    classification.asksAboutWater ||
-    classification.asksAboutLeaf ||
-    classification.asksAboutPain ||
     classification.asksAboutHelpingPain ||
-    classification.asksAboutLeafProblem ||
-    classification.asksAboutSoil ||
     classification.asksAboutNoSoilGrowth ||
     classification.asksAboutWhiteThing ||
-    classification.asksAboutPhoto ||
-    classification.asksAboutSun ||
     classification.asksAboutEating ||
     classification.asksAboutHurting ||
     classification.asksAboutChemicals ||
-    classification.asksAboutCareMethod ||
     classification.asksAboutWaterSchedule ||
     classification.asksAboutWaterAmount ||
-    classification.asksAboutFlower ||
-    classification.asksAboutFruit ||
-    classification.asksAboutHarvest ||
     classification.asksAboutEdiblePart ||
-    classification.asksAboutSpeciesColor ||
-    classification.asksAboutSpeciesGrowth ||
-    classification.asksAboutSeason ||
-    classification.asksAboutLifecycle ||
-    classification.asksAboutWiltReason ||
-    classification.asksAboutSmell ||
-    classification.asksAboutPlace ||
+    classification.asksAboutRegrowthAfterHarvest ||
+    classification.asksAboutTalking ||
+    classification.saysGreeting ||
+    classification.saysAffection ||
     classification.saysEncouragement;
 
   return !shouldStayLocal;
@@ -2649,7 +2635,7 @@ export default function App() {
   const activeChildMessages = chatMessages.filter(
     (message) => (message.childName || "아이 미지정") === activeChildName
   );
-  const visibleChatMessages = chatMessages.slice(-3);
+  const visibleChatMessages = chatMessages.slice(-1);
   const hiddenChatMessageCount = Math.max(
     0,
     chatMessages.length - visibleChatMessages.length
@@ -6498,6 +6484,7 @@ export default function App() {
                   {visibleChatMessages.map((chatMessage) => (
                     <div key={chatMessage.id} style={styles.chatTurn}>
                       <div style={styles.questionBubble}>
+                        <span style={styles.chatBubbleLabel}>질문</span>
                         {chatMessage.childName && (
                           <span style={styles.chatChildName}>
                             {chatMessage.childName}
@@ -6508,7 +6495,10 @@ export default function App() {
 
                       <div style={styles.answerBubble}>
                         <div>
-                          {plantDisplayName}: {chatMessage.answer}
+                          <span style={styles.answerBubbleLabel}>
+                            {plantDisplayName} 답변
+                          </span>
+                          {chatMessage.answer}
                         </div>
                         <div style={styles.answerActions}>
                           <button
@@ -7900,10 +7890,10 @@ const styles: Record<string, CSSProperties> = {
   },
 
   topBar: {
-    height: "60px",
+    height: "54px",
     borderBottom: "1px solid #ECE6D3",
     background: "#FFFDF6",
-    padding: "0 28px",
+    padding: "0 20px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -7916,8 +7906,8 @@ const styles: Record<string, CSSProperties> = {
   },
 
   topBarIcon: {
-    width: "42px",
-    height: "42px",
+    width: "36px",
+    height: "36px",
     objectFit: "contain",
     flexShrink: 0,
   },
@@ -7930,9 +7920,9 @@ const styles: Record<string, CSSProperties> = {
   },
 
   topBarDesc: {
-    margin: "5px 0 0",
+    margin: "3px 0 0",
     color: "#6B7F5A",
-    fontSize: "13px",
+    fontSize: "12px",
     fontWeight: 700,
     wordBreak: "keep-all",
   },
@@ -8147,24 +8137,26 @@ const styles: Record<string, CSSProperties> = {
   homeLayout: {
     display: "grid",
     gridTemplateColumns: "1fr 0.95fr",
-    gap: "12px",
+    gap: "10px",
     minHeight: 0,
-    overflowY: "auto",
+    overflow: "hidden",
     alignItems: "stretch",
   },
 
   homeLeftColumn: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
-    overflowY: "auto",
+    gap: "7px",
+    minHeight: 0,
+    overflow: "hidden",
   },
 
   homeRightColumn: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "8px",
     minHeight: 0,
+    overflow: "hidden",
   },
 
   chatHeroCardLarge: {
@@ -9154,29 +9146,29 @@ const styles: Record<string, CSSProperties> = {
 
   observationLayout: {
     flex: 1,
-    padding: "16px 24px",
+    padding: "10px 16px",
     display: "grid",
-    gridTemplateColumns: "240px 1fr",
-    gap: "18px",
+    gridTemplateColumns: "190px 1fr",
+    gap: "12px",
     minHeight: 0,
-    overflowY: "auto",
+    overflow: "hidden",
   },
 
   photoRecordLayout: {
     flex: 1,
-    padding: "16px 24px",
+    padding: "10px 16px",
     display: "grid",
-    gridTemplateColumns: "270px 1fr",
-    gap: "18px",
+    gridTemplateColumns: "220px 1fr",
+    gap: "12px",
     minHeight: 0,
-    overflowY: "auto",
+    overflow: "hidden",
   },
 
   observationSideCard: {
     background: "#F6F1DE",
     border: "1px solid #E4DABF",
-    borderRadius: "26px",
-    padding: "18px 16px",
+    borderRadius: "22px",
+    padding: "14px 12px",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
@@ -9187,8 +9179,8 @@ const styles: Record<string, CSSProperties> = {
   photoUploadCard: {
     background: "#F6F1DE",
     border: "1px solid #E4DABF",
-    borderRadius: "26px",
-    padding: "18px 16px",
+    borderRadius: "22px",
+    padding: "14px 12px",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
@@ -9197,8 +9189,8 @@ const styles: Record<string, CSSProperties> = {
   },
 
   observationSideIcon: {
-    width: "88px",
-    height: "88px",
+    width: "68px",
+    height: "68px",
     objectFit: "contain",
     marginBottom: "10px",
   },
@@ -9206,13 +9198,13 @@ const styles: Record<string, CSSProperties> = {
   observationSideTitle: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "22px",
+    fontSize: "19px",
     fontWeight: 900,
     wordBreak: "keep-all",
   },
 
   observationSideText: {
-    margin: "8px 0 0",
+    margin: "6px 0 0",
     color: "#6B7F5A",
     fontSize: "15px",
     fontWeight: 700,
@@ -9303,18 +9295,18 @@ const styles: Record<string, CSSProperties> = {
   observationFormCard: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "24px",
-    padding: "18px",
+    borderRadius: "20px",
+    padding: "12px",
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "8px",
     minHeight: 0,
   },
 
   questionTitle: {
-    margin: "0 0 8px",
+    margin: "0 0 6px",
     color: "#2F4F2F",
-    fontSize: "17px",
+    fontSize: "15px",
     fontWeight: 900,
     wordBreak: "keep-all",
   },
@@ -9322,13 +9314,13 @@ const styles: Record<string, CSSProperties> = {
   choiceGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(4, 1fr)",
-    gap: "10px",
+    gap: "8px",
   },
 
   choiceCard: {
-    borderRadius: "18px",
-    padding: "9px 6px",
-    minHeight: "104px",
+    borderRadius: "16px",
+    padding: "7px 5px",
+    minHeight: "86px",
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
@@ -9338,8 +9330,8 @@ const styles: Record<string, CSSProperties> = {
   },
 
   choiceIcon: {
-    width: "52px",
-    height: "52px",
+    width: "42px",
+    height: "42px",
     objectFit: "contain",
   },
 
@@ -9388,37 +9380,37 @@ const styles: Record<string, CSSProperties> = {
 
   recordLayout: {
     flex: 1,
-    padding: "18px 24px",
+    padding: "10px 16px",
     display: "grid",
-    gridTemplateColumns: "260px 1fr",
-    gap: "22px",
+    gridTemplateColumns: "210px 1fr",
+    gap: "12px",
     minHeight: 0,
-    overflowY: "auto",
+    overflow: "hidden",
   },
 
   recordListPanel: {
     minHeight: 0,
-    overflowY: "auto",
-    paddingRight: "4px",
+    overflow: "hidden",
+    paddingRight: 0,
   },
 
   recordDateFilterBox: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "20px",
-    padding: "14px",
+    borderRadius: "16px",
+    padding: "10px",
     display: "grid",
     gridTemplateColumns: "1fr auto auto",
-    gap: "10px",
+    gap: "8px",
     alignItems: "center",
-    marginBottom: "16px",
+    marginBottom: "10px",
   },
 
   recordSummaryTabs: {
     display: "grid",
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    gap: "8px",
-    marginBottom: "16px",
+    gap: "6px",
+    marginBottom: "10px",
   },
 
   recordSummaryTab: {
@@ -9426,8 +9418,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFFFFF",
     color: "#42553A",
     borderRadius: "999px",
-    padding: "11px 10px",
-    fontSize: "14px",
+    padding: "8px 8px",
+    fontSize: "12px",
     fontWeight: 900,
     cursor: "pointer",
     wordBreak: "keep-all",
@@ -9438,8 +9430,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFF4B8",
     color: "#2F4F2F",
     borderRadius: "999px",
-    padding: "10px",
-    fontSize: "14px",
+    padding: "7px 8px",
+    fontSize: "12px",
     fontWeight: 950,
     cursor: "pointer",
     wordBreak: "keep-all",
@@ -9485,8 +9477,8 @@ const styles: Record<string, CSSProperties> = {
   analysisTabs: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: "8px",
-    marginBottom: "16px",
+    gap: "6px",
+    marginBottom: "10px",
   },
 
   analysisTab: {
@@ -9494,8 +9486,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFFFFF",
     color: "#42553A",
     borderRadius: "999px",
-    padding: "11px 10px",
-    fontSize: "15px",
+    padding: "8px 8px",
+    fontSize: "13px",
     fontWeight: 900,
     cursor: "pointer",
     wordBreak: "keep-all",
@@ -9506,8 +9498,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFF4B8",
     color: "#2F4F2F",
     borderRadius: "999px",
-    padding: "10px",
-    fontSize: "15px",
+    padding: "7px 8px",
+    fontSize: "13px",
     fontWeight: 950,
     cursor: "pointer",
     wordBreak: "keep-all",
@@ -9516,9 +9508,9 @@ const styles: Record<string, CSSProperties> = {
   analysisRosterBox: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "24px",
-    padding: "16px",
-    marginBottom: "16px",
+    borderRadius: "18px",
+    padding: "12px",
+    marginBottom: "10px",
   },
 
   analysisChildSearchInput: {
@@ -9538,7 +9530,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexWrap: "wrap",
     gap: "8px",
-    maxHeight: "112px",
+    maxHeight: "92px",
     overflowY: "auto",
     marginTop: "10px",
     paddingRight: "4px",
@@ -10696,14 +10688,14 @@ const styles: Record<string, CSSProperties> = {
   chatPlantName: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "22px",
+    fontSize: "20px",
     fontWeight: 900,
   },
 
   chatPlantDesc: {
     margin: "6px 0 0",
     color: "#6B7F5A",
-    fontSize: "14px",
+    fontSize: "13px",
     fontWeight: 700,
     wordBreak: "keep-all",
   },
@@ -10763,6 +10755,15 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.2,
   },
 
+  chatBubbleLabel: {
+    display: "block",
+    marginBottom: "3px",
+    color: "rgba(255, 255, 255, 0.78)",
+    fontSize: "11px",
+    fontWeight: 900,
+    lineHeight: 1.1,
+  },
+
   questionBubble: {
     alignSelf: "flex-end",
     maxWidth: "78%",
@@ -10770,7 +10771,7 @@ const styles: Record<string, CSSProperties> = {
     color: "white",
     borderRadius: "18px 18px 6px 18px",
     padding: "9px 13px",
-    fontSize: "15px",
+    fontSize: "13px",
     fontWeight: 800,
     lineHeight: 1.35,
     wordBreak: "keep-all",
@@ -10935,6 +10936,15 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "96px 1fr",
     alignItems: "center",
     gap: "8px",
+  },
+
+  answerBubbleLabel: {
+    display: "block",
+    marginBottom: "4px",
+    color: "#6B7F5A",
+    fontSize: "11px",
+    fontWeight: 950,
+    lineHeight: 1.1,
   },
 
   chatComposer: {
