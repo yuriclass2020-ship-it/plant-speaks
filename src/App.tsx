@@ -2039,6 +2039,7 @@ export default function App() {
   const [recordSummaryTab, setRecordSummaryTab] = useState<
     "records" | "weekly" | "photos" | "attention"
   >("records");
+  const [recordTypeTab, setRecordTypeTab] = useState<ObservationType>("soil");
   const [plantName, setPlantName] = useState("");
   const [plantType, setPlantType] = useState("");
   const [plantMemo, setPlantMemo] = useState("");
@@ -3072,6 +3073,45 @@ export default function App() {
   const leafRecords = visibleRecords.filter((record) => record.type === "leaf");
   const soilRecords = visibleRecords.filter((record) => record.type === "soil");
   const otherRecords = visibleRecords.filter((record) => record.type === "other");
+  const recordTypeTabItems: Array<{
+    type: ObservationType;
+    label: string;
+    icon: string;
+    records: ObservationRecord[];
+    emptyText: string;
+  }> = [
+    {
+      type: "soil",
+      label: "흙",
+      icon: "/icons/soil.png",
+      records: soilRecords,
+      emptyText: "아직 흙 관찰 기록이 없어요.",
+    },
+    {
+      type: "leaf",
+      label: "잎",
+      icon: "/icons/leaf.png",
+      records: leafRecords,
+      emptyText: "아직 잎 관찰 기록이 없어요.",
+    },
+    {
+      type: "photo",
+      label: "사진",
+      icon: "/icons/camera.png",
+      records: photoRecords,
+      emptyText: "아직 사진 기록이 없어요.",
+    },
+    {
+      type: "other",
+      label: "기타",
+      icon: "/icons/note.png",
+      records: otherRecords,
+      emptyText: "아직 기타 기록이 없어요.",
+    },
+  ];
+  const activeRecordTypeTab =
+    recordTypeTabItems.find((item) => item.type === recordTypeTab) ??
+    recordTypeTabItems[0];
   const allPhotoRecords = currentPlantRecords.filter(
     (record) => record.type === "photo" && record.imageData
   );
@@ -7210,33 +7250,35 @@ export default function App() {
                   </button>
                 </div>
 
+                <div style={styles.recordTypeTabs}>
+                  {recordTypeTabItems.map((item) => (
+                    <button
+                      key={item.type}
+                      type="button"
+                      style={
+                        recordTypeTab === item.type
+                          ? styles.recordTypeTabActive
+                          : styles.recordTypeTab
+                      }
+                      onClick={() => setRecordTypeTab(item.type)}
+                    >
+                      <img
+                        src={item.icon}
+                        alt=""
+                        style={styles.recordTypeTabIcon}
+                      />
+                      <span>{item.label}</span>
+                      <strong>{item.records.length}</strong>
+                    </button>
+                  ))}
+                </div>
+
                 <div style={styles.recordCategoryStack}>
                   {renderRecordGroup(
-                    "흙",
-                    "/icons/soil.png",
-                    soilRecords,
-                    "아직 흙 관찰 기록이 없어요."
-                  )}
-
-                  {renderRecordGroup(
-                    "잎",
-                    "/icons/leaf.png",
-                    leafRecords,
-                    "아직 잎 관찰 기록이 없어요."
-                  )}
-
-                  {renderRecordGroup(
-                    "사진",
-                    "/icons/camera.png",
-                    photoRecords,
-                    "아직 사진 기록이 없어요."
-                  )}
-
-                  {renderRecordGroup(
-                    "기타",
-                    "/icons/note.png",
-                    otherRecords,
-                    "아직 기타 기록이 없어요."
+                    activeRecordTypeTab.label,
+                    activeRecordTypeTab.icon,
+                    activeRecordTypeTab.records,
+                    activeRecordTypeTab.emptyText
                   )}
                 </div>
                 </>
@@ -10142,21 +10184,68 @@ const styles: Record<string, CSSProperties> = {
   recordCategoryStack: {
     display: "flex",
     flexDirection: "column",
-    gap: "16px",
+    gap: "10px",
+    minHeight: 0,
+  },
+
+  recordTypeTabs: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: "8px",
+    marginBottom: "10px",
+  },
+
+  recordTypeTab: {
+    border: "1px solid #E4DABF",
+    background: "#FFFFFF",
+    color: "#42553A",
+    borderRadius: "18px",
+    padding: "8px 8px",
+    display: "grid",
+    gridTemplateColumns: "26px 1fr auto",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "13px",
+    fontWeight: 900,
+    cursor: "pointer",
+    minWidth: 0,
+  },
+
+  recordTypeTabActive: {
+    border: "2px solid #E3BE3C",
+    background: "#FFF4B8",
+    color: "#2F4F2F",
+    borderRadius: "18px",
+    padding: "7px 8px",
+    display: "grid",
+    gridTemplateColumns: "26px 1fr auto",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "13px",
+    fontWeight: 950,
+    cursor: "pointer",
+    minWidth: 0,
+  },
+
+  recordTypeTabIcon: {
+    width: "24px",
+    height: "24px",
+    objectFit: "contain",
   },
 
   recordGroupBox: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "24px",
-    padding: "16px",
+    borderRadius: "18px",
+    padding: "12px",
+    minHeight: 0,
   },
 
   recordGroupHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "14px",
+    marginBottom: "10px",
   },
 
   recordGroupTitleBox: {
@@ -10166,15 +10255,15 @@ const styles: Record<string, CSSProperties> = {
   },
 
   recordGroupIcon: {
-    width: "38px",
-    height: "38px",
+    width: "30px",
+    height: "30px",
     objectFit: "contain",
   },
 
   recordGroupTitle: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "21px",
+    fontSize: "18px",
     fontWeight: 900,
   },
 
@@ -10201,23 +10290,23 @@ const styles: Record<string, CSSProperties> = {
   recordGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "16px",
+    gap: "10px",
   },
 
   recordCard: {
     background: "#FFFDF6",
     border: "1px solid #E8E1C8",
-    borderRadius: "22px",
-    padding: "16px",
+    borderRadius: "16px",
+    padding: "12px",
     boxShadow: "0 4px 10px rgba(80, 80, 60, 0.05)",
   },
 
   recordPhoto: {
     width: "100%",
-    height: "150px",
+    height: "110px",
     objectFit: "contain",
-    borderRadius: "18px",
-    marginBottom: "14px",
+    borderRadius: "14px",
+    marginBottom: "10px",
     border: "1px solid #E8E1C8",
     background: "#FFFDF6",
   },
