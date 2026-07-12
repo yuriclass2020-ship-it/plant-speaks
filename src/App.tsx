@@ -2649,6 +2649,11 @@ export default function App() {
   const activeChildMessages = chatMessages.filter(
     (message) => (message.childName || "아이 미지정") === activeChildName
   );
+  const visibleChatMessages = chatMessages.slice(-3);
+  const hiddenChatMessageCount = Math.max(
+    0,
+    chatMessages.length - visibleChatMessages.length
+  );
   const childCurriculumReport = buildChildCurriculumReport(
     activeChildName,
     activeChildRecords,
@@ -6484,7 +6489,13 @@ export default function App() {
                     </button>
                   </div>
 
-                  {chatMessages.map((chatMessage) => (
+                  {hiddenChatMessageCount > 0 && (
+                    <div style={styles.chatHistoryNotice}>
+                      이전 대화 {hiddenChatMessageCount}개는 저장되어 있어요.
+                    </div>
+                  )}
+
+                  {visibleChatMessages.map((chatMessage) => (
                     <div key={chatMessage.id} style={styles.chatTurn}>
                       <div style={styles.questionBubble}>
                         {chatMessage.childName && (
@@ -10655,10 +10666,10 @@ const styles: Record<string, CSSProperties> = {
 
   chatLayout: {
     flex: 1,
-    padding: "14px 20px",
+    padding: "10px 16px",
     display: "grid",
-    gridTemplateColumns: "220px 1fr",
-    gap: "16px",
+    gridTemplateColumns: "190px 1fr",
+    gap: "12px",
     minHeight: 0,
     overflow: "hidden",
   },
@@ -10666,8 +10677,8 @@ const styles: Record<string, CSSProperties> = {
   chatPlantPanel: {
     background: "#F6F1DE",
     border: "1px solid #E4DABF",
-    borderRadius: "26px",
-    padding: "18px",
+    borderRadius: "22px",
+    padding: "14px",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
@@ -10676,23 +10687,23 @@ const styles: Record<string, CSSProperties> = {
   },
 
   chatPlantImage: {
-    width: "128px",
-    height: "128px",
+    width: "104px",
+    height: "104px",
     objectFit: "contain",
-    marginBottom: "14px",
+    marginBottom: "10px",
   },
 
   chatPlantName: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "26px",
+    fontSize: "22px",
     fontWeight: 900,
   },
 
   chatPlantDesc: {
-    margin: "8px 0 0",
+    margin: "6px 0 0",
     color: "#6B7F5A",
-    fontSize: "16px",
+    fontSize: "14px",
     fontWeight: 700,
     wordBreak: "keep-all",
   },
@@ -10700,7 +10711,7 @@ const styles: Record<string, CSSProperties> = {
   chatMainPanel: {
     display: "flex",
     flexDirection: "column",
-    gap: "10px",
+    gap: "8px",
     minHeight: 0,
     overflow: "hidden",
   },
@@ -10708,11 +10719,12 @@ const styles: Record<string, CSSProperties> = {
   chatMessageList: {
     flex: 1,
     minHeight: 0,
-    overflowY: "auto",
+    overflow: "hidden",
     display: "flex",
     flexDirection: "column",
-    gap: "12px",
-    paddingRight: "4px",
+    justifyContent: "flex-end",
+    gap: "8px",
+    paddingRight: 0,
   },
 
   chatScrollAnchor: {
@@ -10737,19 +10749,30 @@ const styles: Record<string, CSSProperties> = {
   chatTurn: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: "6px",
+  },
+
+  chatHistoryNotice: {
+    alignSelf: "center",
+    background: "#F3EEDC",
+    color: "#6B7F5A",
+    borderRadius: "999px",
+    padding: "5px 10px",
+    fontSize: "12px",
+    fontWeight: 900,
+    lineHeight: 1.2,
   },
 
   questionBubble: {
     alignSelf: "flex-end",
-    maxWidth: "82%",
+    maxWidth: "78%",
     background: "#5F8D4E",
     color: "white",
-    borderRadius: "22px 22px 6px 22px",
-    padding: "14px 18px",
-    fontSize: "17px",
+    borderRadius: "18px 18px 6px 18px",
+    padding: "9px 13px",
+    fontSize: "15px",
     fontWeight: 800,
-    lineHeight: 1.45,
+    lineHeight: 1.35,
     wordBreak: "keep-all",
   },
 
@@ -10763,15 +10786,15 @@ const styles: Record<string, CSSProperties> = {
 
   answerBubble: {
     alignSelf: "flex-start",
-    maxWidth: "88%",
+    maxWidth: "86%",
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
     color: "#42553A",
-    borderRadius: "22px 22px 22px 6px",
-    padding: "15px 18px",
-    fontSize: "17px",
+    borderRadius: "18px 18px 18px 6px",
+    padding: "10px 13px",
+    fontSize: "15px",
     fontWeight: 800,
-    lineHeight: 1.5,
+    lineHeight: 1.4,
     boxShadow: "0 4px 10px rgba(80, 80, 60, 0.06)",
     wordBreak: "keep-all",
   },
@@ -10786,9 +10809,9 @@ const styles: Record<string, CSSProperties> = {
     background: "#E7F0DD",
     color: "#3F6B34",
     borderRadius: "999px",
-    padding: "10px 15px",
-    marginTop: "12px",
-    fontSize: "14px",
+    padding: "7px 11px",
+    marginTop: "8px",
+    fontSize: "12px",
     fontWeight: 900,
     cursor: "pointer",
     alignSelf: "flex-start",
@@ -10906,11 +10929,12 @@ const styles: Record<string, CSSProperties> = {
 
   exampleBox: {
     background: "#F3EEDC",
-    borderRadius: "18px",
-    padding: "8px 12px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
+    borderRadius: "16px",
+    padding: "7px 10px",
+    display: "grid",
+    gridTemplateColumns: "96px 1fr",
+    alignItems: "center",
+    gap: "8px",
   },
 
   chatComposer: {
@@ -10919,7 +10943,7 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFFDF6",
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: "7px",
     flexShrink: 0,
     pointerEvents: "auto",
   },
@@ -10928,17 +10952,15 @@ const styles: Record<string, CSSProperties> = {
     margin: 0,
     color: "#2F4F2F",
     fontWeight: 900,
-    fontSize: "15px",
+    fontSize: "14px",
     whiteSpace: "nowrap",
   },
 
   quickQuestionGrid: {
-    display: "flex",
-    flexDirection: "row",
-    flexWrap: "wrap",
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: "6px",
-    overflow: "visible",
-    paddingBottom: "2px",
+    overflow: "hidden",
   },
 
   quickQuestionButton: {
@@ -10946,14 +10968,14 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFFFFF",
     color: "#345A2F",
     borderRadius: "999px",
-    padding: "6px 12px",
-    fontSize: "13px",
+    padding: "6px 8px",
+    fontSize: "12px",
     fontWeight: 900,
     lineHeight: 1.2,
-    flex: "0 1 auto",
     whiteSpace: "nowrap",
     cursor: "pointer",
     wordBreak: "keep-all",
+    minWidth: 0,
   },
 
   inputArea: {
