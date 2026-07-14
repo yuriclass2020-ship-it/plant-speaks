@@ -7932,10 +7932,10 @@ const styles: Record<string, CSSProperties> = {
   },
 
   topBar: {
-    height: "54px",
+    height: "50px",
     borderBottom: "1px solid #ECE6D3",
     background: "#FFFDF6",
-    padding: "0 20px",
+    padding: "0 18px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
@@ -7944,12 +7944,12 @@ const styles: Record<string, CSSProperties> = {
   topBarLeft: {
     display: "flex",
     alignItems: "center",
-    gap: "14px",
+    gap: "12px",
   },
 
   topBarIcon: {
-    width: "36px",
-    height: "36px",
+    width: "32px",
+    height: "32px",
     objectFit: "contain",
     flexShrink: 0,
   },
@@ -7957,7 +7957,7 @@ const styles: Record<string, CSSProperties> = {
   topBarTitle: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "22px",
+    fontSize: "20px",
     fontWeight: 900,
   },
 
@@ -9051,46 +9051,48 @@ const styles: Record<string, CSSProperties> = {
 
   tabMainLayout: {
     flex: 1,
-    padding: "10px 16px",
+    padding: "8px 14px",
     display: "grid",
-    gridTemplateColumns: "220px 1fr",
-    gap: "14px",
+    gridTemplateColumns: "160px 1fr",
+    gap: "8px",
     minHeight: 0,
   },
 
   sideInfoCard: {
     background: "#F6F1DE",
     border: "1px solid #E4DABF",
-    borderRadius: "22px",
-    padding: "12px 12px",
+    borderRadius: "16px",
+    padding: "12px 10px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     textAlign: "center",
+    alignSelf: "start",
+    minHeight: "0",
   },
 
   sideInfoIcon: {
-    width: "56px",
-    height: "56px",
+    width: "38px",
+    height: "38px",
     objectFit: "contain",
-    marginBottom: "10px",
+    marginBottom: "6px",
   },
 
   sideInfoTitle: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "18px",
+    fontSize: "14px",
     fontWeight: 900,
     wordBreak: "keep-all",
   },
 
   sideInfoText: {
-    margin: "8px 0 0",
+    margin: "5px 0 0",
     color: "#6B7F5A",
-    fontSize: "13px",
+    fontSize: "11px",
     fontWeight: 700,
-    lineHeight: 1.5,
+    lineHeight: 1.32,
     wordBreak: "keep-all",
   },
 
@@ -9423,10 +9425,10 @@ const styles: Record<string, CSSProperties> = {
 
   recordLayout: {
     flex: 1,
-    padding: "10px 16px",
+    padding: "8px 14px",
     display: "grid",
-    gridTemplateColumns: "210px 1fr",
-    gap: "12px",
+    gridTemplateColumns: "150px 1fr",
+    gap: "8px",
     minHeight: 0,
     overflow: "hidden",
   },
@@ -9441,8 +9443,8 @@ const styles: Record<string, CSSProperties> = {
   recordDateFilterBox: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "16px",
-    padding: "10px",
+    borderRadius: "14px",
+    padding: "8px",
     display: "grid",
     gridTemplateColumns: "1fr auto auto",
     gap: "8px",
@@ -9454,7 +9456,7 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: "6px",
-    marginBottom: "10px",
+    marginBottom: "8px",
   },
 
   recordSummaryTab: {
@@ -9462,7 +9464,7 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFFFFF",
     color: "#42553A",
     borderRadius: "999px",
-    padding: "8px 8px",
+    padding: "7px 8px",
     fontSize: "12px",
     fontWeight: 900,
     cursor: "pointer",
@@ -9474,7 +9476,7 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFF4B8",
     color: "#2F4F2F",
     borderRadius: "999px",
-    padding: "7px 8px",
+    padding: "6px 8px",
     fontSize: "12px",
     fontWeight: 950,
     cursor: "pointer",
@@ -9638,9 +9640,9 @@ const styles: Record<string, CSSProperties> = {
   participationBox: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "24px",
-    padding: "16px",
-    marginBottom: "16px",
+    borderRadius: "16px",
+    padding: "10px",
+    marginBottom: "8px",
   },
 
   participationGrid: {
@@ -9865,49 +9867,49 @@ const styles: Record<string, CSSProperties> = {
   photoCompareBox: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "24px",
-    padding: "16px",
-    marginBottom: "16px",
+    borderRadius: "18px",
+    padding: "12px",
+    marginBottom: "10px",
   },
 
   weeklySummaryBox: {
     background: "#F2F7EA",
     border: "1px solid #C7DFC2",
-    borderRadius: "24px",
-    padding: "16px",
-    marginBottom: "16px",
+    borderRadius: "18px",
+    padding: "12px",
+    marginBottom: "10px",
   },
 
   weeklySummaryHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: "12px",
-    marginBottom: "12px",
+    gap: "8px",
+    marginBottom: "8px",
   },
 
   weeklyMetricGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    gap: "10px",
-    marginBottom: "12px",
+    gap: "8px",
+    marginBottom: "8px",
   },
 
   weeklyMetricCard: {
     background: "#FFFFFF",
     border: "1px solid #DCE8CF",
-    borderRadius: "16px",
-    padding: "10px",
+    borderRadius: "14px",
+    padding: "7px 8px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: "3px",
+    gap: "1px",
     color: "#2F4F2F",
     fontWeight: 900,
   },
 
   weeklySummaryText: {
-    margin: "0 0 10px",
+    margin: "0 0 7px",
     color: "#42553A",
     fontSize: "15px",
     fontWeight: 850,
@@ -9937,24 +9939,24 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: "12px",
-    marginBottom: "12px",
+    gap: "10px",
+    marginBottom: "8px",
   },
 
   photoCompareGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "12px",
+    gap: "8px",
   },
 
   photoCompareItem: {
     background: "#FFFDF6",
     border: "1px solid #E4DABF",
-    borderRadius: "18px",
-    padding: "10px",
+    borderRadius: "14px",
+    padding: "8px",
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
+    gap: "6px",
   },
 
   photoCompareLabel: {
@@ -9965,7 +9967,7 @@ const styles: Record<string, CSSProperties> = {
 
   photoCompareImage: {
     width: "100%",
-    height: "160px",
+    height: "125px",
     objectFit: "contain",
     borderRadius: "14px",
     border: "1px solid #E8E1C8",
@@ -9980,13 +9982,13 @@ const styles: Record<string, CSSProperties> = {
   },
 
   photoCompareEmpty: {
-    minHeight: "160px",
+    minHeight: "125px",
     border: "2px dashed #D8CFB8",
     background: "#FFFDF6",
     color: "#5F704B",
     borderRadius: "16px",
-    padding: "14px",
-    fontSize: "15px",
+    padding: "10px",
+    fontSize: "14px",
     fontWeight: 900,
     cursor: "pointer",
     wordBreak: "keep-all",
@@ -9995,30 +9997,30 @@ const styles: Record<string, CSSProperties> = {
   attentionBox: {
     background: "#FFF7D8",
     border: "2px solid #E5C66D",
-    borderRadius: "24px",
-    padding: "16px",
-    marginBottom: "16px",
+    borderRadius: "18px",
+    padding: "12px",
+    marginBottom: "10px",
   },
 
   attentionHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: "12px",
-    marginBottom: "12px",
+    gap: "10px",
+    marginBottom: "8px",
   },
 
   attentionLabel: {
     margin: 0,
     color: "#73571F",
-    fontSize: "14px",
+    fontSize: "13px",
     fontWeight: 900,
   },
 
   attentionTitle: {
-    margin: "4px 0 0",
+    margin: "2px 0 0",
     color: "#2F4F2F",
-    fontSize: "23px",
+    fontSize: "20px",
     fontWeight: 950,
   },
 
@@ -10026,8 +10028,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFFFFF",
     color: "#73571F",
     borderRadius: "999px",
-    padding: "8px 12px",
-    fontSize: "14px",
+    padding: "7px 11px",
+    fontSize: "13px",
     fontWeight: 900,
     whiteSpace: "nowrap",
   },
@@ -10126,8 +10128,8 @@ const styles: Record<string, CSSProperties> = {
 
   recordDateInput: {
     border: "1px solid #D8CFB8",
-    borderRadius: "14px",
-    padding: "11px 12px",
+    borderRadius: "12px",
+    padding: "9px 11px",
     color: "#2F4F2F",
     background: "#FFFDF6",
     fontSize: "15px",
@@ -10139,8 +10141,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#E7F0DD",
     color: "#3F6B34",
     borderRadius: "999px",
-    padding: "11px 14px",
-    fontSize: "14px",
+    padding: "9px 12px",
+    fontSize: "13px",
     fontWeight: 900,
     cursor: "pointer",
     whiteSpace: "nowrap",
@@ -10149,25 +10151,25 @@ const styles: Record<string, CSSProperties> = {
   todayRecordHeader: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "24px",
-    padding: "18px 20px",
+    borderRadius: "14px",
+    padding: "9px 12px",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "16px",
+    marginBottom: "8px",
   },
 
   todayRecordLabel: {
     margin: 0,
     color: "#5F704B",
-    fontSize: "16px",
+    fontSize: "12px",
     fontWeight: 900,
   },
 
   todayRecordDate: {
-    margin: "4px 0 0",
+    margin: "1px 0 0",
     color: "#2F4F2F",
-    fontSize: "25px",
+    fontSize: "18px",
     fontWeight: 900,
     wordBreak: "keep-all",
   },
@@ -10176,8 +10178,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#E7F0DD",
     color: "#3F6B34",
     borderRadius: "999px",
-    padding: "9px 14px",
-    fontSize: "15px",
+    padding: "6px 10px",
+    fontSize: "12px",
     fontWeight: 900,
   },
 
@@ -10191,21 +10193,21 @@ const styles: Record<string, CSSProperties> = {
   recordTypeTabs: {
     display: "grid",
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    gap: "8px",
-    marginBottom: "10px",
+    gap: "6px",
+    marginBottom: "8px",
   },
 
   recordTypeTab: {
     border: "1px solid #E4DABF",
     background: "#FFFFFF",
     color: "#42553A",
-    borderRadius: "18px",
-    padding: "8px 8px",
+    borderRadius: "16px",
+    padding: "6px 8px",
     display: "grid",
-    gridTemplateColumns: "26px 1fr auto",
+    gridTemplateColumns: "22px 1fr auto",
     alignItems: "center",
     gap: "6px",
-    fontSize: "13px",
+    fontSize: "12px",
     fontWeight: 900,
     cursor: "pointer",
     minWidth: 0,
@@ -10215,21 +10217,21 @@ const styles: Record<string, CSSProperties> = {
     border: "2px solid #E3BE3C",
     background: "#FFF4B8",
     color: "#2F4F2F",
-    borderRadius: "18px",
-    padding: "7px 8px",
+    borderRadius: "16px",
+    padding: "5px 8px",
     display: "grid",
-    gridTemplateColumns: "26px 1fr auto",
+    gridTemplateColumns: "22px 1fr auto",
     alignItems: "center",
     gap: "6px",
-    fontSize: "13px",
+    fontSize: "12px",
     fontWeight: 950,
     cursor: "pointer",
     minWidth: 0,
   },
 
   recordTypeTabIcon: {
-    width: "24px",
-    height: "24px",
+    width: "21px",
+    height: "21px",
     objectFit: "contain",
   },
 
@@ -10255,15 +10257,15 @@ const styles: Record<string, CSSProperties> = {
   },
 
   recordGroupIcon: {
-    width: "30px",
-    height: "30px",
+    width: "26px",
+    height: "26px",
     objectFit: "contain",
   },
 
   recordGroupTitle: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "18px",
+    fontSize: "16px",
     fontWeight: 900,
   },
 
@@ -10296,17 +10298,17 @@ const styles: Record<string, CSSProperties> = {
   recordCard: {
     background: "#FFFDF6",
     border: "1px solid #E8E1C8",
-    borderRadius: "16px",
-    padding: "12px",
+    borderRadius: "14px",
+    padding: "10px",
     boxShadow: "0 4px 10px rgba(80, 80, 60, 0.05)",
   },
 
   recordPhoto: {
     width: "100%",
-    height: "110px",
+    height: "92px",
     objectFit: "contain",
-    borderRadius: "14px",
-    marginBottom: "10px",
+    borderRadius: "12px",
+    marginBottom: "8px",
     border: "1px solid #E8E1C8",
     background: "#FFFDF6",
   },
@@ -10315,8 +10317,8 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: "12px",
-    marginBottom: "14px",
+    gap: "10px",
+    marginBottom: "10px",
   },
 
   recordDate: {
@@ -10360,15 +10362,15 @@ const styles: Record<string, CSSProperties> = {
 
   recordChoiceBox: {
     background: "#FFFFFF",
-    borderRadius: "18px",
-    padding: "12px 8px",
+    borderRadius: "14px",
+    padding: "8px 6px",
     textAlign: "center",
     border: "1px solid #EFE7D2",
   },
 
   recordChoiceIcon: {
-    width: "52px",
-    height: "52px",
+    width: "42px",
+    height: "42px",
     objectFit: "contain",
     marginBottom: "6px",
   },
@@ -10664,14 +10666,14 @@ const styles: Record<string, CSSProperties> = {
   statusText: {
     margin: "2px 0",
     color: "#7B7B67",
-    fontSize: "15px",
+    fontSize: "14px",
     fontWeight: 900,
   },
 
   doneStatusText: {
     margin: "2px 0",
     color: "#4F8A3C",
-    fontSize: "15px",
+    fontSize: "14px",
     fontWeight: 900,
   },
 
@@ -10779,7 +10781,7 @@ const styles: Record<string, CSSProperties> = {
   chatPlantName: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "20px",
+    fontSize: "17px",
     fontWeight: 900,
   },
 
@@ -10806,7 +10808,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "flex-end",
-    gap: "8px",
+    gap: "6px",
     paddingRight: 0,
   },
 
@@ -11002,8 +11004,8 @@ const styles: Record<string, CSSProperties> = {
     color: "#6B7F5A",
     background: "#FFF7D8",
     border: "1px solid #E5C66D",
-    borderRadius: "14px",
-    padding: "9px 11px",
+    borderRadius: "12px",
+    padding: "7px 10px",
     fontSize: "13px",
     fontWeight: 850,
     lineHeight: 1.4,
@@ -11053,7 +11055,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0,
     color: "#2F4F2F",
     fontWeight: 900,
-    fontSize: "14px",
+    fontSize: "13px",
     whiteSpace: "nowrap",
   },
 
