@@ -2090,6 +2090,8 @@ export default function App() {
   const todayKey = getDateKey(new Date());
 
   const mainImagePath = "/icons/main-plant.png";
+  const representativePlantImage = plant?.imageData || mainImagePath;
+  const hasRepresentativePlantPhoto = Boolean(plant?.imageData);
   const logoPath = "/icons/plant-logo.png";
   const dateIconPath = "/icons/date.png";
 
@@ -8160,7 +8162,15 @@ export default function App() {
                   onClick={() => speakText(plantStatusSpeech, "plant-status")}
                   title="식물 상태 듣기"
                 >
-                  <img src={mainImagePath} alt={plantDisplayName} style={styles.myPlantImage} />
+                  <img
+                    src={representativePlantImage}
+                    alt={`${plantDisplayName} 대표 모습`}
+                    style={
+                      hasRepresentativePlantPhoto
+                        ? styles.myPlantPhoto
+                        : styles.myPlantImage
+                    }
+                  />
                   <span style={styles.myPlantListenHint}>
                     {readingMessageId === "plant-status" ? "말하는 중 🔊" : "눌러봐요 👂"}
                   </span>
@@ -8968,6 +8978,15 @@ const styles: Record<string, CSSProperties> = {
     width: "100px",
     height: "100px",
     objectFit: "contain",
+  },
+
+  myPlantPhoto: {
+    width: "112px",
+    height: "92px",
+    objectFit: "cover",
+    border: "2px solid #FFFFFF",
+    borderRadius: "14px",
+    boxShadow: "0 2px 8px rgba(47, 79, 47, 0.14)",
   },
 
   myPlantListenHint: {
