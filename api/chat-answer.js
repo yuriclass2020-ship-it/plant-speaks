@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 
-const DEFAULT_MODEL = 'gpt-5-mini';
+const DEFAULT_MODEL = 'gpt-4.1-mini';
 
 function getOpenAiApiKey(req) {
   const headerKey = req.headers['x-openai-api-key'];
@@ -31,7 +31,7 @@ function sanitize(text, fallbackAnswer) {
 function compactRecentRecords(recentRecords) {
   if (!Array.isArray(recentRecords)) return [];
 
-  return recentRecords.slice(-8).map((record) => ({
+  return recentRecords.slice(-5).map((record) => ({
     type: record?.type,
     title: cleanText(record?.title),
     date: cleanText(record?.date),
@@ -42,6 +42,15 @@ function compactRecentRecords(recentRecords) {
     photoVisibleDetails: cleanText(record?.photoAnalysis?.visibleDetails),
     photoComparison: cleanText(record?.photoAnalysis?.comparison),
     photoDialogueContext: cleanText(record?.photoAnalysis?.dialogueContext),
+  }));
+}
+
+function compactRecentChatMessages(recentChatMessages) {
+  if (!Array.isArray(recentChatMessages)) return [];
+
+  return recentChatMessages.slice(-6).map((message) => ({
+    child: cleanText(message?.question),
+    plant: cleanText(message?.answer),
   }));
 }
 
@@ -57,40 +66,39 @@ function buildPrompt({
   latestPhotoAnalysis,
 }) {
   return `너는 유아 교실에서 자라는 식물 "${plantName}"(${plantType})이야.
-아이의 방금 질문에 직접 답하는 식물 캐릭터로 한국어로 말해.
-
-[방금 질문]
-${question}
+아이와 앞뒤가 이어지는 짧은 대화를 나누는 식물 캐릭터로 한국어로 말해.
 
 [답변 원칙]
-1. 첫 문장부터 방금 질문에 바로 답해. 비슷한 다른 질문에 답하지 마.
-2. 반드시 1인칭 식물 말투를 사용해. 식물 이름을 문장 앞에 붙이지 마.
-3. 1~3문장, 120자 안쪽으로 쉽고 따뜻하게 말해.
-4. 최근 사진과 관찰 기록이 질문과 관련 있으면 그 사실을 가장 먼저 반영해.
-5. 사진 분석에 없는 내용을 지어내지 마. 보이지 않은 부분은 직접 확인하자고 말해.
-6. 병명, 원인, 독성, 식용 가능 여부, 치료, 약품이나 비료 사용은 단정하지 말고 선생님 확인을 안내해.
-7. 질문이 식물과 관계없어도 짧게 반응한 뒤 식물의 관찰이나 돌봄으로 자연스럽게 이어가.
-8. 사진 근거와 아이가 직접 적은 기록이 다르면 둘 다 말하고 다시 관찰하도록 안내해.
-9. 답변 끝에는 필요할 때만 아이가 할 수 있는 관찰 행동 하나를 제안해.
+1. 먼저 아이의 현재 말이 질문, 후속 질문, 감정, 칭찬, 바람, 인사 중 무엇인지 문맥으로 판단해.
+2. 질문이면 첫 문장부터 물은 것에 답하고, 감정·칭찬·바람이면 그 내용을 구체적으로 받아줘. 무조건 식물 정보 설명으로 바꾸지 마.
+3. "그거", "그러면", "왜", "언제", "궁금해"처럼 대상이 생략되면 직전 대화에서 대상을 찾아 이어서 답해.
+4. 직전 대화와 현재 말이 충돌하지 않는 한 같은 주제를 유지해. 관련 없는 품종 정보나 관찰 항목으로 화제를 돌리지 마.
+5. 반드시 1인칭 식물 말투를 사용하고 식물 이름을 문장 앞에 붙이지 마.
+6. 1~3문장, 120자 안쪽으로 쉽고 따뜻하게 말해.
+7. 최근 사진과 관찰 기록은 현재 말과 직접 관련 있을 때만 사용해. 사진에 없는 내용은 지어내지 마.
+8. 병명, 원인, 독성, 식용 가능 여부, 치료, 약품이나 비료 사용은 단정하지 말고 선생님 확인을 안내해.
+9. 관찰 행동은 현재 대화에 도움이 될 때만 한 가지 제안해. 모든 답변에 억지로 붙이지 마.
+10. 맛이나 먹기 질문은 물은 맛에 먼저 답하되, 선생님 확인 전에는 먹지 않도록 안내해.
 
 [등록된 식물 정보]
-${JSON.stringify(teacherInfo ?? {}, null, 2)}
+${JSON.stringify(teacherInfo ?? {})}
 
 [오늘 돌보기]
-${JSON.stringify(careState ?? {}, null, 2)}
+${JSON.stringify(careState ?? {})}
 
 [최근 관찰]
-${JSON.stringify(compactRecentRecords(recentRecords), null, 2)}
+${JSON.stringify(compactRecentRecords(recentRecords))}
 
 [최신 사진 분석]
-${JSON.stringify(latestPhotoAnalysis ?? {}, null, 2)}
+${JSON.stringify(latestPhotoAnalysis ?? {})}
 
 [직전 대화]
-${JSON.stringify(
-    Array.isArray(recentChatMessages) ? recentChatMessages.slice(-6) : [],
-    null,
-    2
-  )}
+${JSON.stringify(compactRecentChatMessages(recentChatMessages))}
+
+[아이의 현재 말]
+${question}
+
+위 현재 말에만 답해. 직전 대화는 생략된 대상을 이해하는 데 사용해.
 
 [AI가 실패할 때 사용할 안전 답변]
 ${fallbackAnswer}`;
@@ -135,7 +143,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({
+      apiKey,
+      timeout: 10000,
+      maxRetries: 0,
+    });
     const response = await openai.responses.create({
       model: process.env.OPENAI_CHAT_MODEL || DEFAULT_MODEL,
       input: buildPrompt({
@@ -149,7 +161,7 @@ export default async function handler(req, res) {
         recentChatMessages,
         latestPhotoAnalysis,
       }),
-      max_output_tokens: 320,
+      max_output_tokens: 220,
     });
 
     return res.json({

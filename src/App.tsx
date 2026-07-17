@@ -220,9 +220,20 @@ const QUICK_CHAT_QUESTIONS = [
 ];
 
 function getTestAccessHeaders(): HeadersInit {
-  return {
+  const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
+
+  if (typeof window !== "undefined") {
+    const testAccessCode =
+      window.localStorage.getItem(TEST_ACCESS_CODE_STORAGE_KEY)?.trim() ?? "";
+
+    if (testAccessCode) {
+      headers["x-test-access-code"] = testAccessCode;
+    }
+  }
+
+  return headers;
 }
 
 function getApiHeaders(openAiApiKey?: string): HeadersInit {
@@ -1053,8 +1064,14 @@ function buildChildCurriculumReport(
   const careQuestionCount = childMessages.filter((message) =>
     includesAny(message.question, ["물", "흙", "햇빛", "시들", "살", "키워", "돌"])
   ).length;
-  const expressionCount = childRecords.filter(
-    (record) => record.memo && record.memo !== "그림으로 기록했어요."
+  const automaticRecordMemos = new Set([
+    "그림으로 기록했어요.",
+    "사진으로 기록했어요.",
+  ]);
+  const isChildAuthoredMemo = (memo: string | undefined) =>
+    Boolean(memo?.trim()) && !automaticRecordMemos.has(memo!.trim());
+  const expressionCount = childRecords.filter((record) =>
+    isChildAuthoredMemo(record.memo)
   ).length;
   const hasAffection = includesAny(questionText, [
     "사랑",
@@ -1100,7 +1117,7 @@ function buildChildCurriculumReport(
   const expressionEvidence =
     childRecords
       .map((record) => record.memo)
-      .filter((memo) => memo && memo !== "그림으로 기록했어요.")
+      .filter((memo): memo is string => isChildAuthoredMemo(memo))
       .slice(-2)
       .join(" / ") || "";
 
@@ -1577,6 +1594,7 @@ function classifyPlantQuestion(questionText: string) {
   const asksAboutEating = includesAny(compactQuestion, [
     "먹을수",
     "먹어도",
+    "먹으면",
     "먹을래",
     "먹을수있",
     "어떻게먹",
@@ -1591,6 +1609,29 @@ function classifyPlantQuestion(questionText: string) {
     "어떻게요리",
     "요리해",
   ]);
+  const asksAboutTaste =
+    includesAny(compactQuestion, [
+      "무슨맛",
+      "어떤맛",
+      "맛이어때",
+      "맛이야",
+      "맛은",
+      "달아",
+      "셔",
+      "매워",
+    ]) &&
+    includesAny(compactQuestion, [
+      "먹",
+      "열매",
+      "토마토",
+      "딸기",
+      "고추",
+      "콩",
+      "새싹",
+    ]);
+  const asksAboutRawEating =
+    includesAny(compactQuestion, ["생으로", "생콩", "안익", "익히지"]) &&
+    includesAny(compactQuestion, ["먹", "맛"]);
   const asksAboutHurting = includesAny(compactQuestion, [
     "만져",
     "만져도",
@@ -1726,9 +1767,27 @@ function classifyPlantQuestion(questionText: string) {
       "고마워",
       "귀여워",
       "예뻐",
+      "예쁘",
       "이뻐",
+      "이쁘",
       "최고",
     ]);
+  const saysCuriousExpectation = includesAny(compactQuestion, [
+    "궁금해",
+    "궁금하다",
+    "기대돼",
+    "기대해",
+    "보고싶",
+    "빨리보고",
+  ]);
+  const saysWish = includesAny(compactQuestion, [
+    "좋겠",
+    "했으면",
+    "바라",
+    "소원",
+    "기대돼",
+    "기대해",
+  ]);
   const asksAboutSmell = includesAny(compactQuestion, [
     "냄새",
     "냄새나",
@@ -1839,6 +1898,8 @@ function classifyPlantQuestion(questionText: string) {
     asksAboutSpeciesGrowth,
     asksAboutHungry,
     asksAboutEating,
+    asksAboutTaste,
+    asksAboutRawEating,
     asksAboutHurting,
     asksAboutChemicals,
     asksAboutCareMethod,
@@ -1854,6 +1915,8 @@ function classifyPlantQuestion(questionText: string) {
     asksAboutName,
     saysGreeting,
     saysAffection,
+    saysCuriousExpectation,
+    saysWish,
     saysEncouragement,
     asksAboutSmell,
     asksAboutPlace,
@@ -2813,7 +2876,10 @@ export default function App() {
   const waterNeedsCare = !waterDoneToday && (waterDueBySchedule || soilLooksDry);
   const nextWaterDaysLeft = Math.max(0, careState.waterIntervalDays - daysSinceWatered);
   const shouldShowWaterPrompt =
-    waterNeedsCare && waterPromptDismissedDateKey !== todayKey;
+    screen !== "start" &&
+    Boolean(plant && hasSelectedChild) &&
+    waterNeedsCare &&
+    waterPromptDismissedDateKey !== todayKey;
 
   useEffect(() => {
     if (!shouldShowWaterPrompt) return;
@@ -3835,6 +3901,8 @@ export default function App() {
       asksAboutSpeciesGrowth,
       asksAboutHungry,
       asksAboutEating,
+      asksAboutTaste,
+      asksAboutRawEating,
       asksAboutHurting,
       asksAboutChemicals,
       asksAboutCareMethod,
@@ -3850,6 +3918,8 @@ export default function App() {
       asksAboutName,
       saysGreeting,
       saysAffection,
+      saysCuriousExpectation,
+      saysWish,
       saysEncouragement,
       asksAboutSmell,
       asksAboutPlace,
@@ -3960,7 +4030,26 @@ export default function App() {
       return "고마워요. 건강하게 자라도록 물과 햇빛을 잘 느껴볼게요. 오늘도 잎과 흙을 살짝 봐 주세요.";
     }
 
+    if (saysWish) {
+      if (asksAboutFlower) {
+        return "나도 꽃이 피는 날을 함께 기다리고 싶어요. 꽃봉오리가 생기면 가장 먼저 보여 줄게요.";
+      }
+
+      if (asksAboutFruit) {
+        return "나도 열매가 자라는 모습을 함께 보고 싶어요. 작은 열매가 보이면 같이 천천히 관찰해요.";
+      }
+
+      return "그렇게 기대해 줘서 고마워요. 앞으로 어떻게 자라는지 우리 함께 지켜봐요.";
+    }
+
     if (saysAffection) {
+      if (
+        saysCuriousExpectation &&
+        includesAny(compactQuestion, ["예뻐", "예쁘", "이뻐", "이쁘", "귀여워"])
+      ) {
+        return "예쁘게 자랄 모습을 기대해 줘서 고마워요. 잎, 꽃, 열매 중 무엇이 가장 궁금한지 말해 주면 같이 이야기해 볼게요.";
+      }
+
       if (
         compactQuestion.includes("네가좋아") ||
         compactQuestion.includes("너가좋아") ||
@@ -3978,13 +4067,19 @@ export default function App() {
 
       if (
         compactQuestion.includes("예뻐") ||
+        compactQuestion.includes("예쁘") ||
         compactQuestion.includes("이뻐") ||
+        compactQuestion.includes("이쁘") ||
         compactQuestion.includes("귀여워")
       ) {
         return "그렇게 말해 주니 기분이 좋아요. 오늘 내 잎도 천천히 봐 주세요.";
       }
 
       return "나도 따뜻한 마음이 느껴져요. 오늘도 부드럽게 관찰해 주세요.";
+    }
+
+    if (saysCuriousExpectation) {
+      return "나도 앞으로 어떻게 자랄지 기대돼요. 잎, 꽃, 열매 중 무엇이 가장 궁금한지 말해 주세요.";
     }
 
     if (saysGreeting) {
@@ -4237,6 +4332,35 @@ export default function App() {
       }
 
       return "보리새싹은 보통 씨앗을 뿌린 뒤 7일에서 10일쯤, 키가 10cm에서 15cm 정도 되고 초록색이 선명할 때 먹는 경우가 많아요. 교실에서는 먹기 전에 선생님이 위생과 곰팡이 냄새가 없는지 꼭 확인해 주세요.";
+    }
+
+    const plantIdentity = normalizePlantText(
+      `${plantDisplayName} ${plantDisplayType}`
+    );
+
+    if (asksAboutRawEating && plantIdentity.includes("콩")) {
+      return "생강낭콩은 먹으면 안 돼요. 강낭콩은 반드시 충분히 익혀야 하고, 교실에서 기른 콩은 선생님이 확인하기 전에는 입에 넣지 말아요.";
+    }
+
+    if (asksAboutTaste) {
+
+      if (plantIdentity.includes("토마토")) {
+        return "잘 익은 토마토는 보통 새콤하면서 조금 달콤한 맛이 나요. 하지만 교실 토마토는 선생님이 종류와 위생 상태를 확인하기 전에는 먹지 말아요.";
+      }
+
+      if (plantIdentity.includes("딸기")) {
+        return "잘 익은 딸기는 보통 달콤하고 조금 새콤해요. 선생님이 깨끗하고 먹어도 되는 열매인지 확인한 뒤에만 맛볼 수 있어요.";
+      }
+
+      if (plantIdentity.includes("고추")) {
+        return "고추는 종류와 익은 정도에 따라 맵거나 단맛이 날 수 있어요. 교실에서는 선생님이 확인하기 전에는 맛보거나 입에 넣지 말아요.";
+      }
+
+      if (plantIdentity.includes("콩")) {
+        return "충분히 익힌 강낭콩은 보통 부드럽고 담백하며 조금 고소한 맛이 나요. 생콩은 먹지 말고, 교실에서 기른 콩은 선생님이 확인한 뒤에만 먹어야 해요.";
+      }
+
+      return "사진과 이름만으로는 어떤 맛인지, 먹어도 되는 식물인지 알 수 없어요. 선생님이 정확한 종류와 위생 상태를 확인하기 전에는 입에 넣지 말아요.";
     }
 
     if (teacherInfo && (asksAboutEating || asksAboutSpeciesInfo)) {
@@ -4823,7 +4947,13 @@ export default function App() {
 
     try {
       answer = createPlantAnswer(question);
-      shouldAskAi = true;
+      const intent = classifyPlantQuestion(question);
+      const plantIdentity = normalizePlantText(
+        `${plantDisplayName} ${plantDisplayType}`
+      );
+      shouldAskAi = !(
+        intent.asksAboutRawEating && plantIdentity.includes("콩")
+      );
     } catch (error) {
       console.error("답변 생성 실패:", error);
       shouldAskAi = true;
@@ -4838,7 +4968,7 @@ export default function App() {
           id: messageId,
           childName: activeChildName,
           question,
-          answer: shouldAskAi ? "잠깐 생각해볼게요." : answer,
+          answer,
         },
       ])
     );
@@ -4857,6 +4987,10 @@ export default function App() {
       careState.countDateKey,
       careState.waterCount,
       careState.sunCount,
+      ...activeChildMessages.slice(-4).flatMap((chatMessage) => [
+        normalizeAiCacheQuestion(chatMessage.question),
+        normalizeAiCacheQuestion(chatMessage.answer),
+      ]),
     ].join(":");
     const aiCacheKey = createAiChatCacheKey(
       plantDisplayName,

@@ -59,11 +59,11 @@ const photoAnalysisCache = new Map();
 const PHOTO_ANALYSIS_STYLE_VERSION = 'visible-only-v2';
 const DEFAULT_PLANT_INFO_MODEL = 'gpt-4o-mini';
 const DEFAULT_PHOTO_ANALYSIS_MODEL = 'gpt-4o-mini';
-const DEFAULT_CHAT_ANSWER_MODEL = 'gpt-4o-mini';
+const DEFAULT_CHAT_ANSWER_MODEL = 'gpt-4.1-mini';
 const PLANT_INFO_RETRY_COUNT = 2;
 const PLANT_INFO_TIMEOUT_MS = 30000;
 const PHOTO_ANALYSIS_TIMEOUT_MS = 30000;
-const CHAT_ANSWER_TIMEOUT_MS = 18000;
+const CHAT_ANSWER_TIMEOUT_MS = 10000;
 
 function getTestAccessCodes() {
   const rawCodes = process.env.TEST_ACCESS_CODES || process.env.TEST_ACCESS_CODE || '';
@@ -787,37 +787,50 @@ function buildChatAnswerPrompt({
   teacherInfo,
   careState,
   recentRecords,
+  recentChatMessages,
   latestPhotoAnalysis,
 }) {
   return [
-    '어린이 교실 식물 관찰 앱의 식물 캐릭터로 한국어 답변을 작성하세요.',
+    '어린이 교실 식물 관찰 앱에서 아이와 앞뒤가 이어지는 대화를 나누는 식물 캐릭터로 한국어 답변을 작성하세요.',
     '',
     `식물 이름: ${plantName}`,
     `식물 종류: ${plantType}`,
-    `아이 질문: ${question}`,
     `앱 안전 기본 답변: ${fallbackAnswer}`,
     '',
     '중요 규칙:',
-    '- 답변은 1~2문장, 90자 이내로 짧게 작성하세요.',
+    '- 먼저 현재 말이 질문, 후속 질문, 감정, 칭찬, 바람, 인사 중 무엇인지 문맥으로 판단하세요.',
+    '- 질문이면 바로 답하고, 감정·칭찬·바람이면 그 내용을 구체적으로 받아 주세요.',
+    '- 대상이 생략된 말은 직전 대화에서 대상을 찾아 같은 주제로 이어서 답하세요.',
+    '- 관련 없는 식물 정보나 관찰 항목으로 화제를 돌리지 마세요.',
+    '- 답변은 1~3문장, 120자 이내로 짧게 작성하세요.',
     '- 아이에게 따뜻하게 답하되 식물이 실제 사람 감정, 가족, 결혼, 꿈, 생각을 가진다고 단정하지 마세요.',
-    '- 엉뚱한 질문도 식물 입장에서 짧게 받아주고, 반드시 관찰 행동으로 연결하세요.',
+    '- 엉뚱한 말도 짧게 받아주고, 관찰 행동은 대화에 도움이 될 때만 제안하세요.',
     '- 모르는 식물 정보는 지어내지 말고 관찰로 연결하세요.',
     '- 먹기, 만지기, 약, 비료, 병, 독성, 치료 판단은 하지 말고 선생님/어른 확인을 말하세요.',
+    '- 맛 질문은 물어본 맛에 먼저 답하고, 선생님 확인 전에는 먹지 않도록 안내하세요.',
     '- 최근 기록과 교사 확인 정보가 있으면 우선 반영하세요.',
     '- 마지막에는 가능하면 잎, 줄기, 흙, 햇빛, 사진 중 하나를 관찰하도록 자연스럽게 이어 주세요.',
     '- 식물 이름을 앞에 붙이지 마세요. 앱이 화면에서 이름을 따로 붙입니다.',
     '',
     '교사 확인 정보:',
-    JSON.stringify(teacherInfo ?? {}, null, 2),
+    JSON.stringify(teacherInfo ?? {}),
     '',
     '돌보기 상태:',
-    JSON.stringify(careState ?? {}, null, 2),
+    JSON.stringify(careState ?? {}),
     '',
     '최근 관찰 기록:',
-    JSON.stringify(recentRecords ?? [], null, 2),
+    JSON.stringify(recentRecords ?? []),
     '',
     '최근 사진 분석:',
-    JSON.stringify(latestPhotoAnalysis ?? {}, null, 2),
+    JSON.stringify(latestPhotoAnalysis ?? {}),
+    '',
+    '직전 대화:',
+    JSON.stringify(recentChatMessages ?? []),
+    '',
+    '아이의 현재 말:',
+    question,
+    '',
+    '현재 말에만 답하고, 직전 대화는 생략된 대상을 이해하는 데 사용하세요.',
   ].join('\n');
 }
 
@@ -959,6 +972,7 @@ function isEdibleTimingQuestion(question) {
     '언제먹',
     '먹을수',
     '먹어도',
+    '먹으면',
     '먹는부분',
     '뭘먹',
     '어디먹',
@@ -978,6 +992,108 @@ function isEdibleTimingQuestion(question) {
   ];
 
   return keywords.some((keyword) => compactQuestion.includes(keyword));
+}
+
+function isTasteQuestion(question) {
+  const compactQuestion = String(question ?? '').replace(/\s/g, '').toLowerCase();
+  const tasteKeywords = [
+    '무슨맛',
+    '어떤맛',
+    '맛이어때',
+    '맛이야',
+    '맛은',
+    '달아',
+    '셔',
+    '매워',
+  ];
+  const foodKeywords = ['먹', '열매', '토마토', '딸기', '고추', '콩', '새싹'];
+
+  return (
+    tasteKeywords.some((keyword) => compactQuestion.includes(keyword)) &&
+    foodKeywords.some((keyword) => compactQuestion.includes(keyword))
+  );
+}
+
+function isRawBeanQuestion(question, plantName, plantType) {
+  const compactQuestion = String(question ?? '').replace(/\s/g, '').toLowerCase();
+  const plantIdentity = `${plantName ?? ''} ${plantType ?? ''}`
+    .replace(/\s/g, '')
+    .toLowerCase();
+  const rawKeywords = ['생으로', '생콩', '안익', '익히지'];
+  const eatingKeywords = ['먹', '맛'];
+
+  return (
+    plantIdentity.includes('콩') &&
+    rawKeywords.some((keyword) => compactQuestion.includes(keyword)) &&
+    eatingKeywords.some((keyword) => compactQuestion.includes(keyword))
+  );
+}
+
+function createTasteSafetyAnswer(plantName, plantType) {
+  const plantIdentity = `${plantName ?? ''} ${plantType ?? ''}`
+    .replace(/\s/g, '')
+    .toLowerCase();
+
+  if (plantIdentity.includes('토마토')) {
+    return '잘 익은 토마토는 보통 새콤하면서 조금 달콤한 맛이 나요. 하지만 교실 토마토는 선생님이 종류와 위생 상태를 확인하기 전에는 먹지 말아요.';
+  }
+
+  if (plantIdentity.includes('딸기')) {
+    return '잘 익은 딸기는 보통 달콤하고 조금 새콤해요. 선생님이 깨끗하고 먹어도 되는 열매인지 확인한 뒤에만 맛볼 수 있어요.';
+  }
+
+  if (plantIdentity.includes('고추')) {
+    return '고추는 종류와 익은 정도에 따라 맵거나 단맛이 날 수 있어요. 교실에서는 선생님이 확인하기 전에는 맛보거나 입에 넣지 말아요.';
+  }
+
+  if (plantIdentity.includes('콩')) {
+    return '충분히 익힌 강낭콩은 보통 부드럽고 담백하며 조금 고소한 맛이 나요. 생콩은 먹지 말고, 교실에서 기른 콩은 선생님이 확인한 뒤에만 먹어야 해요.';
+  }
+
+  return '사진과 이름만으로는 어떤 맛인지, 먹어도 되는 식물인지 알 수 없어요. 선생님이 정확한 종류와 위생 상태를 확인하기 전에는 입에 넣지 말아요.';
+}
+
+function createSocialChatAnswer(question) {
+  const compactQuestion = String(question ?? '').replace(/\s/g, '').toLowerCase();
+  const complimentKeywords = [
+    '사랑해',
+    '좋아해',
+    '고마워',
+    '귀여워',
+    '예뻐',
+    '예쁘',
+    '이뻐',
+    '이쁘',
+    '최고',
+  ];
+  const curiousKeywords = [
+    '궁금해',
+    '궁금하다',
+    '기대돼',
+    '기대해',
+    '보고싶',
+    '빨리보고',
+  ];
+  const hasCompliment = complimentKeywords.some((keyword) =>
+    compactQuestion.includes(keyword)
+  );
+  const hasCuriosity = curiousKeywords.some((keyword) =>
+    compactQuestion.includes(keyword)
+  );
+
+  if (hasCompliment && hasCuriosity) {
+    return '예쁘게 자랄 모습을 기대해 줘서 고마워요. 잎, 꽃, 열매 중 무엇이 가장 궁금한지 말해 주면 같이 이야기해 볼게요.';
+  }
+
+  if (hasCompliment) {
+    return '그렇게 말해 주니 기분이 좋아요. 오늘 내 모습도 천천히 봐 주세요.';
+  }
+
+  if (hasCuriosity) {
+    return '나도 앞으로 어떻게 자랄지 기대돼요. 잎, 꽃, 열매 중 무엇이 가장 궁금한지 말해 주세요.';
+  }
+
+  return '';
 }
 
 function isRegrowthAfterHarvestQuestion(question) {
@@ -1445,6 +1561,11 @@ function createLocalChatAnswer({ question, plantName, plantType, teacherInfo }) 
     typeof teacherInfo?.edibleInfo === 'string' && teacherInfo.edibleInfo.trim()
       ? teacherInfo.edibleInfo.trim()
       : '';
+  const socialAnswer = createSocialChatAnswer(question);
+
+  if (socialAnswer) {
+    return socialAnswer;
+  }
 
   if (safeOriginInfo && isOriginQuestion(question)) {
     return makeTeacherInfoAnswer(
@@ -1524,6 +1645,14 @@ function createLocalChatAnswer({ question, plantName, plantType, teacherInfo }) 
       safeSummary,
       '오늘은 잎, 줄기, 흙 중 하나를 골라 관찰해 봐요.'
     );
+  }
+
+  if (isRawBeanQuestion(question, plantName, plantType)) {
+    return '생강낭콩은 먹으면 안 돼요. 강낭콩은 반드시 충분히 익혀야 하고, 교실에서 기른 콩은 선생님이 확인하기 전에는 입에 넣지 말아요.';
+  }
+
+  if (isTasteQuestion(question)) {
+    return createTasteSafetyAnswer(plantName, plantType);
   }
 
   if (safeEdibleInfo && isEdibleTimingQuestion(question)) {
@@ -1749,6 +1878,7 @@ async function generateChatAnswer(context, openAiApiKey) {
     openai.responses.create({
       model,
       input: buildChatAnswerPrompt(context),
+      max_output_tokens: 220,
     }),
     CHAT_ANSWER_TIMEOUT_MS,
     'Chat answer request'
@@ -2106,6 +2236,7 @@ app.post('/api/chat-answer', async (req, res) => {
     teacherInfo,
     careState,
     recentRecords,
+    recentChatMessages,
     latestPhotoAnalysis,
   } = req.body ?? {};
 
@@ -2121,15 +2252,6 @@ app.post('/api/chat-answer', async (req, res) => {
       ? fallbackAnswer.trim()
       : '나는 식물 이야기만 대답할 수 있어요. 내 잎, 흙, 물, 햇빛에 대해 물어봐 주세요.';
 
-  if (!isPlantChatScope(question)) {
-    return res.json({
-      ok: true,
-      source: 'scope-fallback',
-      answer:
-        '나는 식물 이야기만 대답할 수 있어요. 내 잎, 흙, 물, 햇빛에 대해 물어봐 주세요.',
-    });
-  }
-
   const safePlantName =
     typeof plantName === 'string' && plantName.trim()
       ? plantName.trim()
@@ -2139,12 +2261,15 @@ app.post('/api/chat-answer', async (req, res) => {
       ? plantType.trim()
       : '종류를 아직 모르는 식물';
   const requestApiKey = getRequestOpenAiApiKey(req);
-  const localAnswer = createLocalChatAnswer({
+  const localAnswer = isRawBeanQuestion(
     question,
-    plantName: safePlantName,
-    plantType: safePlantType,
-    teacherInfo,
-  });
+    safePlantName,
+    safePlantType
+  )
+    ? '생강낭콩은 먹으면 안 돼요. 강낭콩은 반드시 충분히 익혀야 하고, 교실에서 기른 콩은 선생님이 확인하기 전에는 입에 넣지 말아요.'
+    : isTasteQuestion(question)
+      ? createTasteSafetyAnswer(safePlantName, safePlantType)
+      : '';
 
   if (localAnswer) {
     return res.json({
@@ -2179,7 +2304,10 @@ app.post('/api/chat-answer', async (req, res) => {
         plantType: safePlantType,
         teacherInfo,
         careState,
-        recentRecords: Array.isArray(recentRecords) ? recentRecords.slice(-8) : [],
+        recentRecords: Array.isArray(recentRecords) ? recentRecords.slice(-5) : [],
+        recentChatMessages: Array.isArray(recentChatMessages)
+          ? recentChatMessages.slice(-4)
+          : [],
         latestPhotoAnalysis,
       },
       requestApiKey
