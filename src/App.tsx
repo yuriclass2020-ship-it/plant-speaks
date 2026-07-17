@@ -1038,7 +1038,7 @@ function buildChildCurriculumReport(
   const latestQuestions = childMessages
     .map((message) => message.question.trim())
     .filter(Boolean)
-    .slice(-3)
+    .slice(-2)
     .reverse();
   const latestPhotoAnalysis = [...photoRecords]
     .reverse()
@@ -1065,16 +1065,20 @@ function buildChildCurriculumReport(
   ]);
   const joinAnalysisText = (...parts: Array<string | false | null | undefined>) =>
     parts.filter((part): part is string => Boolean(part?.trim())).join(" ");
+  const shortenEvidence = (text: string, maxLength = 18) =>
+    text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 
   const questionEvidence =
     latestQuestions.length > 0
-      ? `최근 질문: "${latestQuestions.join('", "')}"`
+      ? `최근 질문 · ${latestQuestions
+          .map((question) => `"${shortenEvidence(question)}"`)
+          .join("  ")}`
       : "";
   const recordEvidence =
     latestRecords.length > 0
-      ? `최근 기록: ${latestRecords
-          .map((record) => `${record.title}(${record.date})`)
-          .join(", ")}`
+      ? `최근 기록 · ${latestRecords
+          .map((record) => record.title)
+          .join(" · ")}`
       : "";
   const photoEvidence = latestPhotoAnalysis
     ? `사진 분석에서는 "${latestPhotoAnalysis.summary}"라고 남아 있어요.`
@@ -1110,7 +1114,7 @@ function buildChildCurriculumReport(
                 withKoreanTopicParticle(normalizedChildName),
                 questionEvidence,
                 recordEvidence,
-                "질문과 반복 기록으로 변화를 확인하려는 모습이 보여요."
+                "질문하고 다시 기록하며 변화를 확인하고 있어요."
               )
             : "",
       },
@@ -1120,7 +1124,7 @@ function buildChildCurriculumReport(
           soilRecords.length > 0 || careQuestionCount > 0
             ? joinAnalysisText(
                 soilEvidence,
-                "물, 흙, 햇빛을 식물 상태와 연결해 보려는 시도가 보여요."
+                "물·흙·햇빛을 식물 상태와 연결해 살펴봤어요."
               )
             : "",
       },
@@ -1130,7 +1134,7 @@ function buildChildCurriculumReport(
           hasAffection || photoRecords.length > 0
             ? joinAnalysisText(
                 photoEvidence,
-                "식물을 조심히 살피고 돌봄이 필요한 대상으로 대하는 태도를 볼 수 있어요."
+                "식물을 조심히 살피며 돌봄이 필요한 대상으로 대했어요."
               )
             : "",
       },
@@ -1145,7 +1149,7 @@ function buildChildCurriculumReport(
                   normalizedChildName
                 )} 식물에게 ${questionCount}번 질문했어요.`,
                 questionEvidence,
-                "자기 궁금증을 말로 표현했어요."
+                "궁금한 점을 말로 표현했어요."
               )
             : "",
       },
@@ -1156,7 +1160,7 @@ function buildChildCurriculumReport(
             ? joinAnalysisText(
                 `그림 카드와 사진으로 ${childRecords.length}개의 기록을 남겼어요.`,
                 leafEvidence,
-                "선택한 그림과 사진으로 관찰 의미를 표현했어요."
+                "그림과 사진으로 관찰한 내용을 표현했어요."
               )
             : "",
       },
@@ -10850,47 +10854,50 @@ const styles: Record<string, CSSProperties> = {
   curriculumAreaCard: {
     background: "#FFFFFF",
     border: "1px solid #E4DABF",
-    borderRadius: "20px",
-    padding: "12px",
+    borderRadius: "16px",
+    padding: "13px",
   },
 
   curriculumAreaTitle: {
-    margin: "0 0 8px",
+    margin: "0 0 10px",
     color: "#2F4F2F",
-    fontSize: "19px",
+    fontSize: "18px",
     fontWeight: 900,
   },
 
   curriculumItem: {
-    background: "#FFFDF6",
-    border: "1px solid #EFE7D2",
-    borderRadius: "16px",
-    padding: "11px 12px",
+    background: "#FCFBF5",
+    border: "1px solid #E9E2CF",
+    borderRadius: "12px",
+    padding: "10px 11px",
     marginBottom: "8px",
-    display: "grid",
-    gridTemplateColumns: "120px 1fr",
-    gap: "8px",
-    alignItems: "start",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
     color: "#42553A",
-    fontSize: "14px",
+    fontSize: "13px",
     fontWeight: 800,
     lineHeight: 1.45,
     wordBreak: "keep-all",
   },
 
   curriculumItemTitle: {
+    alignSelf: "flex-start",
+    background: "#EAF2E2",
+    borderRadius: "7px",
+    padding: "4px 7px",
     color: "#2F4F2F",
-    fontSize: "15px",
+    fontSize: "13px",
     fontWeight: 950,
-    lineHeight: 1.35,
+    lineHeight: 1.25,
   },
 
   curriculumItemText: {
     margin: 0,
     color: "#42553A",
-    fontSize: "14px",
-    fontWeight: 800,
-    lineHeight: 1.45,
+    fontSize: "13px",
+    fontWeight: 750,
+    lineHeight: 1.55,
     wordBreak: "keep-all",
   },
 
