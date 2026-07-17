@@ -1886,6 +1886,7 @@ function shouldUseAiChatFallback(questionText: string) {
   if (!isPlantChatScope) return true;
 
   const shouldStayLocal =
+    classification.asksAboutPain ||
     classification.asksAboutHelpingPain ||
     classification.asksAboutNoSoilGrowth ||
     classification.asksAboutWhiteThing ||
@@ -4545,10 +4546,12 @@ export default function App() {
     let answer = "잠깐 생각해볼게요. 오늘 내 잎, 흙, 물, 햇빛 중 하나를 같이 살펴봐 주세요.";
     let shouldAskAi = true;
     const compactQuestionForSend = question.replace(/\s/g, "").toLowerCase();
-    const asksDirectHelpForPain =
-      ["아파", "아프", "아픈", "힘들"].some((keyword) =>
+    const asksAboutPlantPainOrStatus =
+      ["아파", "아프", "아픈", "힘들", "괜찮아", "괜찮니", "상태"].some((keyword) =>
         compactQuestionForSend.includes(keyword)
-      ) &&
+      );
+    const asksDirectHelpForPain =
+      asksAboutPlantPainOrStatus &&
       ["도와", "도움", "어떻게", "어찌"].some((keyword) =>
         compactQuestionForSend.includes(keyword)
       );
@@ -4557,6 +4560,9 @@ export default function App() {
       if (asksDirectHelpForPain) {
         answer =
           "먼저 잎 색, 줄기 힘, 흙 느낌을 차례로 살펴봐 주세요. 물이 너무 많거나 부족하지 않은지 보고, 걱정되는 모습은 사진으로 남겨 선생님께 알려 주세요.";
+        shouldAskAi = false;
+      } else if (asksAboutPlantPainOrStatus) {
+        answer = createPlantAnswer(question);
         shouldAskAi = false;
       } else {
         answer = createPlantAnswer(question);
