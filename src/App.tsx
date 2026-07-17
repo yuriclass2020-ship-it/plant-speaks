@@ -22,6 +22,8 @@ type Plant = {
   type: string;
   memo: string;
   teacherInfo?: TeacherPlantInfo;
+  imageData?: string;
+  registrationAnalysis?: PhotoAnalysis;
 };
 
 type TeacherPlantInfo = {
@@ -97,6 +99,19 @@ type PhotoAnalysis = {
   soilHint: string;
   action: string;
   checkedAt: string;
+  suggestedPlantType?: string;
+  identificationConfidence?: "high" | "medium" | "low";
+  photoQuality?: "good" | "usable" | "poor";
+  visibleFeatures?: string[];
+  condition?: "healthy" | "observe" | "unclear";
+  comparison?: string;
+  dialogueContext?: string;
+};
+
+type CareAction = {
+  key: "waterCount" | "sunCount";
+  previousCareState: CareState;
+  label: string;
 };
 
 type NavItem = {
@@ -398,17 +413,33 @@ async function loadPhotoAnalysisFromServer({
   plantName,
   plantType,
   imageData,
+  purpose,
+  previousAnalysis,
+  previousImageData,
+  previousDate,
   openAiApiKey,
 }: {
   plantName: string;
   plantType: string;
   imageData: string;
+  purpose?: "registration" | "observation";
+  previousAnalysis?: PhotoAnalysis;
+  previousImageData?: string;
+  previousDate?: string;
   openAiApiKey?: string;
 }): Promise<PhotoAnalysis> {
   const response = await fetch(API_PHOTO_ANALYSIS_URL, {
     method: "POST",
     headers: getApiHeaders(openAiApiKey),
-    body: JSON.stringify({ plantName, plantType, imageData }),
+    body: JSON.stringify({
+      plantName,
+      plantType,
+      imageData,
+      purpose,
+      previousAnalysis,
+      previousImageData,
+      previousDate,
+    }),
   });
   const data = (await response.json()) as {
     ok: boolean;
@@ -433,6 +464,7 @@ async function loadChatAnswerFromServer({
   teacherInfo,
   careState,
   recentRecords,
+  recentChatMessages,
   latestPhotoAnalysis,
   openAiApiKey,
 }: {
@@ -443,6 +475,7 @@ async function loadChatAnswerFromServer({
   teacherInfo?: TeacherPlantInfo;
   careState: CareState;
   recentRecords: ObservationRecord[];
+  recentChatMessages: ChatMessage[];
   latestPhotoAnalysis?: PhotoAnalysis;
   openAiApiKey?: string;
 }): Promise<string> {
@@ -469,6 +502,10 @@ async function loadChatAnswerFromServer({
               action: record.photoAnalysis.action,
             }
           : undefined,
+      })),
+      recentChatMessages: recentChatMessages.slice(-6).map((chatMessage) => ({
+        question: chatMessage.question,
+        answer: chatMessage.answer,
       })),
       latestPhotoAnalysis,
     }),
@@ -1070,7 +1107,7 @@ function buildChildCurriculumReport(
         text:
           inquiryQuestionCount > 0 || childRecords.length > 1
             ? joinAnalysisText(
-                `${normalizedChildName}은`,
+                withKoreanTopicParticle(normalizedChildName),
                 questionEvidence,
                 recordEvidence,
                 "질문과 반복 기록으로 변화를 확인하려는 모습이 보여요."
@@ -1104,7 +1141,9 @@ function buildChildCurriculumReport(
         text:
           questionCount > 0
             ? joinAnalysisText(
-                `${normalizedChildName}은 식물에게 ${questionCount}번 질문했어요.`,
+                `${withKoreanTopicParticle(
+                  normalizedChildName
+                )} 식물에게 ${questionCount}번 질문했어요.`,
                 questionEvidence,
                 "자기 궁금증을 말로 표현했어요."
               )
@@ -1823,87 +1862,6 @@ function classifyPlantQuestion(questionText: string) {
   };
 }
 
-function shouldUseAiChatFallback(questionText: string) {
-  const classification = classifyPlantQuestion(questionText);
-  const hasUnsafeNonPlantTopic = includesAny(classification.compactQuestion, [
-    "때려",
-    "죽여",
-    "미워해",
-    "바보",
-    "싫어해줘",
-    "개인정보",
-    "전화번호",
-    "주소",
-  ]);
-
-  if (hasUnsafeNonPlantTopic) return false;
-
-  const isPlantChatScope =
-    classification.asksAboutWater ||
-    classification.asksAboutLeaf ||
-    classification.asksAboutPain ||
-    classification.asksAboutHelpingPain ||
-    classification.asksAboutLeafProblem ||
-    classification.asksAboutSoil ||
-    classification.asksAboutNoSoilGrowth ||
-    classification.asksAboutWhiteThing ||
-    classification.asksAboutPhoto ||
-    classification.asksAboutSun ||
-    classification.asksAboutMood ||
-    classification.asksAboutDislike ||
-    classification.asksAboutPlantPreference ||
-    classification.asksAboutLike ||
-    classification.asksAboutHungry ||
-    classification.asksAboutDance ||
-    classification.asksAboutMovement ||
-    classification.asksAboutSchool ||
-    classification.asksAboutChildlikeQuestion ||
-    classification.asksAboutSleep ||
-    classification.asksAboutTalking ||
-    classification.asksAboutIdentity ||
-    classification.asksAboutName ||
-    classification.saysGreeting ||
-    classification.saysAffection ||
-    classification.asksAboutAge ||
-    classification.asksAboutPlantFamily ||
-    classification.asksAboutSpeciesInfo ||
-    includesAny(classification.compactQuestion, [
-      "식물",
-      "잎",
-      "줄기",
-      "뿌리",
-      "흙",
-      "물",
-      "햇빛",
-      "화분",
-      "자라",
-      "시들",
-      "꽃",
-      "열매",
-      "씨앗",
-    ]);
-
-  if (!isPlantChatScope) return true;
-
-  const shouldStayLocal =
-    classification.asksAboutPain ||
-    classification.asksAboutHelpingPain ||
-    classification.asksAboutNoSoilGrowth ||
-    classification.asksAboutWhiteThing ||
-    classification.asksAboutEating ||
-    classification.asksAboutHurting ||
-    classification.asksAboutChemicals ||
-    classification.asksAboutWaterSchedule ||
-    classification.asksAboutWaterAmount ||
-    classification.asksAboutEdiblePart ||
-    classification.asksAboutRegrowthAfterHarvest ||
-    classification.asksAboutTalking ||
-    classification.saysGreeting ||
-    classification.saysAffection ||
-    classification.saysEncouragement;
-
-  return !shouldStayLocal;
-}
 function createRecordId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -1916,12 +1874,31 @@ function normalizeAiCacheQuestion(question: string) {
   return question.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function createAiChatCacheKey(plantName: string, plantType: string, question: string) {
+function createAiChatCacheKey(
+  plantName: string,
+  plantType: string,
+  question: string,
+  contextSignature = ""
+) {
   return [
     normalizePlantText(plantName),
     normalizePlantText(plantType),
     normalizeAiCacheQuestion(question),
+    contextSignature,
   ].join("|");
+}
+
+function withKoreanTopicParticle(value: string) {
+  const trimmedValue = value.trim();
+  const lastCharacter = trimmedValue.at(-1);
+
+  if (!lastCharacter) return trimmedValue;
+
+  const code = lastCharacter.charCodeAt(0);
+  const hasBatchim =
+    code >= 0xac00 && code <= 0xd7a3 && (code - 0xac00) % 28 !== 0;
+
+  return `${trimmedValue}${hasBatchim ? "은" : "는"}`;
 }
 
 function trimAiChatCache(cache: Record<string, string>) {
@@ -2029,6 +2006,7 @@ export default function App() {
   const chatMessageListRef = useRef<HTMLDivElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
+  const backupImportInputRef = useRef<HTMLInputElement | null>(null);
   const activeAudioIdRef = useRef("");
   const audioUrlCacheRef = useRef<Record<string, string>>({});
   const audioPreloadRef = useRef<Set<string>>(new Set());
@@ -2044,6 +2022,12 @@ export default function App() {
   const [plantName, setPlantName] = useState("");
   const [plantType, setPlantType] = useState("");
   const [plantMemo, setPlantMemo] = useState("");
+  const [registrationImageData, setRegistrationImageData] = useState("");
+  const [registrationPhotoAnalysis, setRegistrationPhotoAnalysis] =
+    useState<PhotoAnalysis | null>(null);
+  const [isRegistrationPhotoAnalyzing, setIsRegistrationPhotoAnalyzing] =
+    useState(false);
+  const [showAdvancedPlantInfo, setShowAdvancedPlantInfo] = useState(false);
   const [teacherSummary, setTeacherSummary] = useState("");
   const [teacherOriginInfo, setTeacherOriginInfo] = useState("");
   const [teacherClassificationInfo, setTeacherClassificationInfo] = useState("");
@@ -2068,10 +2052,11 @@ export default function App() {
   const [isTeacherDraftLoading, setIsTeacherDraftLoading] = useState(false);
   const [draftStatus, setDraftStatus] = useState<DraftStatus>({
     tone: "idle",
-    text: "식물 종류를 입력하고 자동 초안을 불러올 수 있어요.",
+    text: "사진을 올리면 AI가 식물 종류와 기본 정보를 자동으로 채워요.",
   });
 
   const [careState, setCareState] = useState<CareState>(defaultCareState);
+  const [lastCareAction, setLastCareAction] = useState<CareAction | null>(null);
   const [records, setRecords] = useState<ObservationRecord[]>([]);
 
   const [leafColor, setLeafColor] = useState("");
@@ -2319,6 +2304,10 @@ export default function App() {
       setPlantName(nextState.plant?.name ?? "");
       setPlantType(nextState.plant?.type ?? "");
       setPlantMemo(nextState.plant?.memo ?? "");
+      setRegistrationImageData(nextState.plant?.imageData ?? "");
+      setRegistrationPhotoAnalysis(
+        nextState.plant?.registrationAnalysis ?? null
+      );
       setTeacherSummary(nextState.plant?.teacherInfo?.summary ?? "");
       setTeacherOriginInfo(nextState.plant?.teacherInfo?.originInfo ?? "");
       setTeacherClassificationInfo(
@@ -2371,7 +2360,7 @@ export default function App() {
         tone: nextState.plant?.teacherInfo ? "success" : "idle",
         text: nextState.plant?.teacherInfo
           ? "교사 확인 정보가 저장되어 있어요."
-          : "식물 종류를 입력하고 자동 초안을 불러올 수 있어요.",
+          : "사진을 올리면 AI가 식물 종류와 기본 정보를 자동으로 채워요.",
       });
       setCareState(nextState.careState);
       setRecords(nextState.records);
@@ -2642,6 +2631,9 @@ export default function App() {
     activeChildRecords,
     activeChildMessages
   );
+  const activeChildAnalyzedPhotoCount = activeChildRecords.filter(
+    (record) => record.type === "photo" && record.photoAnalysis
+  ).length;
 
   useEffect(() => {
     localStorage.setItem(
@@ -2710,6 +2702,17 @@ export default function App() {
   const todayLeafRecord = getLatestRecord(todayPlantRecords, "leaf");
   const todaySoilRecord = getLatestRecord(todayPlantRecords, "soil");
   const todayPhotoRecord = getLatestRecord(todayPlantRecords, "photo");
+  const todayObservationCount = [
+    todayLeafRecord,
+    todaySoilRecord,
+    todayPhotoRecord,
+  ].filter(Boolean).length;
+  const todayObservationProgress = Math.round(
+    (todayObservationCount / 3) * 100
+  );
+  const recentObservationRecords = [...currentPlantRecords]
+    .sort((a, b) => getRecordCreatedAt(b) - getRecordCreatedAt(a))
+    .slice(0, 3);
   const latestAnalyzedPhotoRecord = currentPlantRecords
     .filter(
       (record) =>
@@ -3258,6 +3261,8 @@ export default function App() {
       name: plantName.trim(),
       type: plantType.trim() || "종류를 아직 모르는 식물",
       memo: plantMemo.trim() || "오늘부터 관찰을 시작해요.",
+      imageData: registrationImageData || undefined,
+      registrationAnalysis: registrationPhotoAnalysis || undefined,
       teacherInfo: {
         summary: teacherSummary.trim() || teacherInfoDraft.summary,
         originInfo: teacherOriginInfo.trim() || teacherInfoDraft.originInfo,
@@ -3314,19 +3319,63 @@ export default function App() {
     setPlant(nextPlant);
     localStorage.setItem(PLANT_STORAGE_KEY, JSON.stringify(nextPlant));
 
+    const shouldAddRegistrationPhoto =
+      Boolean(registrationImageData && registrationPhotoAnalysis) &&
+      registrationImageData !== plant?.imageData;
+    const registrationPhotoRecord: ObservationRecord | null =
+      shouldAddRegistrationPhoto
+        ? {
+            id: createRecordId(),
+            childName: activeChildName,
+            plantName: nextPlant.name,
+            plantType: nextPlant.type,
+            type: "photo",
+            title: "첫 사진 기록",
+            date: todayLabel,
+            dateKey: todayKey,
+            firstLabel: "AI 확인",
+            firstValue:
+              registrationPhotoAnalysis?.suggestedPlantType ||
+              "식물 사진을 확인했어요",
+            firstIcon: "/icons/camera.png",
+            secondLabel: "사진 상태",
+            secondValue:
+              registrationPhotoAnalysis?.condition === "healthy"
+                ? "좋아 보여요"
+                : registrationPhotoAnalysis?.condition === "observe"
+                  ? "살펴봐야 해요"
+                  : "조금 더 관찰해요",
+            secondIcon:
+              registrationPhotoAnalysis?.condition === "healthy"
+                ? "/icons/main-plant.png"
+                : "/icons/observe.png",
+            memo:
+              registrationPhotoAnalysis?.summary ||
+              "등록할 때 남긴 식물 사진이에요.",
+            imageData: registrationImageData,
+            photoAnalysis: registrationPhotoAnalysis || undefined,
+          }
+        : null;
+
     if (shouldStartNewPlant) {
       const resetCareState = createCareStateFromTeacherInfo(
         nextPlant.teacherInfo,
         todayKey
       );
 
-      setRecords([]);
+      setRecords(registrationPhotoRecord ? [registrationPhotoRecord] : []);
       setChatMessages([]);
       setSelectedRecordDateKey("all");
       setCareState(resetCareState);
       localStorage.setItem(CARE_STORAGE_KEY, JSON.stringify(resetCareState));
-      localStorage.setItem(RECORD_STORAGE_KEY, JSON.stringify([]));
+      localStorage.setItem(
+        RECORD_STORAGE_KEY,
+        JSON.stringify(registrationPhotoRecord ? [registrationPhotoRecord] : [])
+      );
     } else {
+      if (registrationPhotoRecord) {
+        setRecords((prev) => [registrationPhotoRecord, ...prev]);
+      }
       setCareState((prev) => ({
         ...prev,
         sunGoal: clampNumber(
@@ -3356,6 +3405,9 @@ export default function App() {
     setPlantName("");
     setPlantType("");
     setPlantMemo("");
+    setRegistrationImageData("");
+    setRegistrationPhotoAnalysis(null);
+    setShowAdvancedPlantInfo(false);
     setTeacherSummary("");
     setTeacherOriginInfo("");
     setTeacherClassificationInfo("");
@@ -3379,7 +3431,7 @@ export default function App() {
     setTeacherChildAnswerHints("");
     setDraftStatus({
       tone: "idle",
-      text: "식물 종류를 입력하고 자동 초안을 불러올 수 있어요.",
+      text: "사진을 올리면 AI가 식물 종류와 기본 정보를 자동으로 채워요.",
     });
     localStorage.removeItem(PLANT_STORAGE_KEY);
 
@@ -3404,18 +3456,32 @@ export default function App() {
   const increaseCount = (key: "waterCount" | "sunCount") => {
     const nextMotion = key === "waterCount" ? "water" : "sun";
     const reactionSpeech = CARE_REACTION_SPEECH[key];
+    const previousCareState = careState;
 
     setCareMotion("");
     window.setTimeout(() => setCareMotion(nextMotion), 20);
     window.setTimeout(() => setCareMotion(""), 1450);
     void speakText(reactionSpeech, `care-reaction-${key}`);
 
+    setLastCareAction({
+      key,
+      previousCareState,
+      label: key === "waterCount" ? "물 주기" : "햇빛 보기",
+    });
     setCareState((prev) => ({
       ...prev,
       [key]: (prev.countDateKey === todayKey ? prev[key] : 0) + 1,
       countDateKey: todayKey,
-      lastWateredDateKey: key === "waterCount" ? todayKey : prev.lastWateredDateKey,
+      lastWateredDateKey:
+        key === "waterCount" ? todayKey : prev.lastWateredDateKey,
     }));
+  };
+
+  const undoLastCareAction = () => {
+    if (!lastCareAction) return;
+
+    setCareState(lastCareAction.previousCareState);
+    setLastCareAction(null);
   };
 
   const dismissWaterPrompt = () => {
@@ -3423,6 +3489,11 @@ export default function App() {
   };
 
   const resetTodayCounts = () => {
+    const confirmed = window.confirm(
+      "오늘 기록한 물 주기와 햇빛 보기 횟수를 모두 초기화할까요?"
+    );
+    if (!confirmed) return;
+
     setCareState((prev) => ({
       ...prev,
       waterCount: 0,
@@ -3431,6 +3502,7 @@ export default function App() {
       lastWateredDateKey: "",
     }));
     setWaterPromptDismissedDateKey("");
+    setLastCareAction(null);
   };
 
   const increaseWaterInterval = () => {
@@ -3527,6 +3599,203 @@ export default function App() {
       });
     } finally {
       setIsTeacherDraftLoading(false);
+    }
+  };
+
+  const analyzeRegistrationPhoto = async (imageData: string) => {
+    if (!imageData) return;
+
+    setIsRegistrationPhotoAnalyzing(true);
+    setRegistrationPhotoAnalysis(null);
+    setDraftStatus({
+      tone: "loading",
+      text: "AI가 사진에서 식물 종류와 보이는 특징을 살펴보고 있어요.",
+    });
+
+    try {
+      const analysis = await loadPhotoAnalysisFromServer({
+        plantName: plantName.trim() || "새 식물",
+        plantType: plantType.trim() || "종류 미확인",
+        imageData,
+        purpose: "registration",
+        openAiApiKey,
+      });
+
+      setRegistrationPhotoAnalysis(analysis);
+
+      if (analysis.isPlantPhoto === false) {
+        setDraftStatus({
+          tone: "warning",
+          text: "식물을 분명하게 확인하기 어려워요. 식물 전체와 잎이 보이는 사진을 다시 골라 주세요.",
+        });
+        return;
+      }
+
+      const suggestedPlantType = analysis.suggestedPlantType?.trim() || "";
+      const nextPlantType = suggestedPlantType || plantType.trim();
+
+      if (suggestedPlantType) {
+        setPlantType(suggestedPlantType);
+        setPlantName((prev) => prev.trim() || suggestedPlantType);
+      }
+
+      if (nextPlantType) {
+        const result = await loadPlantInfoDraftFromServer(
+          nextPlantType,
+          openAiApiKey
+        );
+        applyTeacherInfoDraft(
+          result?.draft ?? createTeacherInfoDraft(nextPlantType)
+        );
+      }
+
+      setDraftStatus({
+        tone: suggestedPlantType ? "success" : "warning",
+        text: suggestedPlantType
+          ? `${suggestedPlantType}(으)로 보여요. 이름과 종류만 확인하고 저장하면 돼요.`
+          : "식물은 확인했지만 종류는 확실하지 않아요. 종류를 직접 적어 주세요.",
+      });
+    } catch (error) {
+      setDraftStatus({
+        tone: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "사진을 분석하지 못했어요. OpenAI 키를 확인해 주세요.",
+      });
+    } finally {
+      setIsRegistrationPhotoAnalyzing(false);
+    }
+  };
+
+  const handleRegistrationPhotoFileChange = async (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("이미지 파일만 선택할 수 있어요.");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      const resizedImage = await resizeImageFile(file);
+      setRegistrationImageData(resizedImage);
+      playChoiceSound();
+      await analyzeRegistrationPhoto(resizedImage);
+    } catch {
+      setDraftStatus({
+        tone: "error",
+        text: "사진을 불러오지 못했어요. 다른 사진을 선택해 주세요.",
+      });
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const removeRegistrationPhoto = () => {
+    setRegistrationImageData("");
+    setRegistrationPhotoAnalysis(null);
+    setDraftStatus({
+      tone: "idle",
+      text: "사진을 올리면 AI가 식물 종류와 기본 정보를 자동으로 채워요.",
+    });
+  };
+
+  const exportAppBackup = () => {
+    const backup = {
+      format: "plant-speaks-backup",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      state: {
+        plant,
+        careState,
+        records,
+        chatMessages,
+        childRoster: knownChildNames,
+        currentChildName,
+      },
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `plant-speaks-backup-${todayKey}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const importAppBackup = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const backup = JSON.parse(await file.text()) as {
+        format?: string;
+        state?: DbAppState;
+      };
+      const backupState = backup.state;
+
+      if (
+        backup.format !== "plant-speaks-backup" ||
+        !backupState ||
+        !Array.isArray(backupState.records)
+      ) {
+        throw new Error("식물톡 백업 파일이 아니에요.");
+      }
+
+      const confirmed = window.confirm(
+        "현재 기록을 백업 파일의 내용으로 바꿀까요? OpenAI 키는 그대로 유지돼요."
+      );
+      if (!confirmed) return;
+
+      if (backupState.plant) {
+        localStorage.setItem(
+          PLANT_STORAGE_KEY,
+          JSON.stringify(backupState.plant)
+        );
+      } else {
+        localStorage.removeItem(PLANT_STORAGE_KEY);
+      }
+      localStorage.setItem(
+        CARE_STORAGE_KEY,
+        JSON.stringify(backupState.careState || defaultCareState)
+      );
+      localStorage.setItem(
+        RECORD_STORAGE_KEY,
+        JSON.stringify(backupState.records)
+      );
+      localStorage.setItem(
+        CHAT_STORAGE_KEY,
+        JSON.stringify(backupState.chatMessages || [])
+      );
+      localStorage.setItem(
+        CHILD_ROSTER_STORAGE_KEY,
+        JSON.stringify(backupState.childRoster || [])
+      );
+      if (backupState.currentChildName?.trim()) {
+        localStorage.setItem(
+          CHILD_STORAGE_KEY,
+          backupState.currentChildName.trim()
+        );
+      } else {
+        localStorage.removeItem(CHILD_STORAGE_KEY);
+      }
+
+      window.location.reload();
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "백업 파일을 불러오지 못했어요."
+      );
     }
   };
 
@@ -4545,29 +4814,10 @@ export default function App() {
 
     let answer = "잠깐 생각해볼게요. 오늘 내 잎, 흙, 물, 햇빛 중 하나를 같이 살펴봐 주세요.";
     let shouldAskAi = true;
-    const compactQuestionForSend = question.replace(/\s/g, "").toLowerCase();
-    const asksAboutPlantPainOrStatus =
-      ["아파", "아프", "아픈", "힘들", "괜찮아", "괜찮니", "상태"].some((keyword) =>
-        compactQuestionForSend.includes(keyword)
-      );
-    const asksDirectHelpForPain =
-      asksAboutPlantPainOrStatus &&
-      ["도와", "도움", "어떻게", "어찌"].some((keyword) =>
-        compactQuestionForSend.includes(keyword)
-      );
 
     try {
-      if (asksDirectHelpForPain) {
-        answer =
-          "먼저 잎 색, 줄기 힘, 흙 느낌을 차례로 살펴봐 주세요. 물이 너무 많거나 부족하지 않은지 보고, 걱정되는 모습은 사진으로 남겨 선생님께 알려 주세요.";
-        shouldAskAi = false;
-      } else if (asksAboutPlantPainOrStatus) {
-        answer = createPlantAnswer(question);
-        shouldAskAi = false;
-      } else {
-        answer = createPlantAnswer(question);
-        shouldAskAi = shouldUseAiChatFallback(question);
-      }
+      answer = createPlantAnswer(question);
+      shouldAskAi = true;
     } catch (error) {
       console.error("답변 생성 실패:", error);
       shouldAskAi = true;
@@ -4594,10 +4844,19 @@ export default function App() {
 
     if (!shouldAskAi) return;
 
+    const aiContextSignature = [
+      latestRecord?.id || "no-record",
+      latestPhotoAnalysis?.checkedAt || "no-photo-analysis",
+      latestPhotoAnalysis?.dialogueContext || "",
+      careState.countDateKey,
+      careState.waterCount,
+      careState.sunCount,
+    ].join(":");
     const aiCacheKey = createAiChatCacheKey(
       plantDisplayName,
       plantDisplayType,
-      question
+      question,
+      aiContextSignature
     );
     const cachedAiAnswer = aiChatCache[aiCacheKey];
 
@@ -4651,6 +4910,7 @@ export default function App() {
         teacherInfo,
         careState,
         recentRecords: currentPlantRecords.slice(-6),
+        recentChatMessages: activeChildMessages.slice(-6),
         latestPhotoAnalysis,
         openAiApiKey,
       });
@@ -5005,8 +5265,8 @@ export default function App() {
   };
 
   const savePhotoRecord = () => {
-    if (!photoChange || !photoFeeling) {
-      setObservationNotice("변화와 느낌 그림을 하나씩 골라 주세요.");
+    if (!photoImageData && (!photoChange || !photoFeeling)) {
+      setObservationNotice("사진을 올리거나 변화와 느낌 그림을 골라 주세요.");
       return;
     }
 
@@ -5020,12 +5280,14 @@ export default function App() {
       date: todayLabel,
       dateKey: todayKey,
       firstLabel: "오늘의 변화",
-      firstValue: photoChange,
-      firstIcon: photoChangeIcon,
+      firstValue: photoChange || "AI가 살펴볼 예정이에요",
+      firstIcon: photoChangeIcon || "/icons/camera.png",
       secondLabel: "오늘의 느낌",
-      secondValue: photoFeeling,
-      secondIcon: photoFeelingIcon,
-      memo: photoMemo.trim() || "그림으로 기록했어요.",
+      secondValue: photoFeeling || "사진으로 확인해요",
+      secondIcon: photoFeelingIcon || "/icons/observe.png",
+      memo:
+        photoMemo.trim() ||
+        (photoImageData ? "사진으로 기록했어요." : "그림으로 기록했어요."),
       imageData: photoImageData || undefined,
     };
 
@@ -5040,6 +5302,10 @@ export default function App() {
     setObservationNotice("");
     setRecordSaveNotice("사진 기록이 저장됐어요.");
     setScreen("record");
+
+    if (nextRecord.imageData) {
+      void analyzePhotoRecord(nextRecord);
+    }
   };
 
   const deleteRecord = (id: string) => {
@@ -5063,16 +5329,52 @@ export default function App() {
     );
 
     try {
+      const previousAnalyzedPhotoRecord = currentPlantRecords
+        .filter(
+          (item) =>
+            item.id !== record.id &&
+            item.type === "photo" &&
+            item.photoAnalysis?.isPlantPhoto !== false
+        )
+        .sort((a, b) => getRecordCreatedAt(b) - getRecordCreatedAt(a))[0];
       const analysis = await loadPhotoAnalysisFromServer({
         plantName: record.plantName || plantDisplayName,
         plantType: record.plantType || plantDisplayType,
         imageData: record.imageData,
+        purpose: "observation",
+        previousAnalysis: previousAnalyzedPhotoRecord?.photoAnalysis,
+        previousImageData: previousAnalyzedPhotoRecord?.imageData,
+        previousDate: previousAnalyzedPhotoRecord?.date,
         openAiApiKey,
       });
 
       setRecords((prev) =>
         prev.map((item) =>
-          item.id === record.id ? { ...item, photoAnalysis: analysis } : item
+          item.id === record.id
+            ? {
+                ...item,
+                firstValue:
+                  item.firstValue === "AI가 살펴볼 예정이에요"
+                    ? analysis.comparison
+                      ? "이전 사진과 비교했어요"
+                      : "사진을 살펴봤어요"
+                    : item.firstValue,
+                secondValue:
+                  item.secondValue === "사진으로 확인해요"
+                    ? analysis.condition === "healthy"
+                      ? "좋아 보여요"
+                      : analysis.condition === "observe"
+                        ? "살펴봐야 해요"
+                        : "조금 더 관찰해요"
+                    : item.secondValue,
+                secondIcon:
+                  item.secondValue === "사진으로 확인해요" &&
+                  analysis.condition === "healthy"
+                    ? "/icons/main-plant.png"
+                    : item.secondIcon,
+                photoAnalysis: analysis,
+              }
+            : item
         )
       );
       setPhotoAnalysisNotice("사진 분석 결과가 기록에 저장됐어요.");
@@ -5434,6 +5736,20 @@ export default function App() {
                       ? "식물 사진 아님"
                       : "식물 사진 확인"}
                   </div>
+                  {record.photoAnalysis.suggestedPlantType && (
+                    <div style={styles.photoAnalysisLine}>
+                      <span>AI가 본 식물 종류</span>
+                      <strong>
+                        {record.photoAnalysis.suggestedPlantType} ·{" "}
+                        {record.photoAnalysis.identificationConfidence === "high"
+                          ? "신뢰 높음"
+                          : record.photoAnalysis.identificationConfidence ===
+                              "medium"
+                            ? "교사 확인 권장"
+                            : "추정 정보"}
+                      </strong>
+                    </div>
+                  )}
                   <div style={styles.photoAnalysisLine}>
                     <span>사진에서 보이는 것</span>
                     <strong>
@@ -5454,6 +5770,12 @@ export default function App() {
                       )}
                     </strong>
                   </div>
+                  {record.photoAnalysis.comparison && (
+                    <div style={styles.photoAnalysisComparison}>
+                      <span>이전 사진과 비교</span>
+                      <strong>{record.photoAnalysis.comparison}</strong>
+                    </div>
+                  )}
                   <div style={styles.photoAnalysisAction}>
                     <span>다음 행동</span>
                     {getSafePhotoAnalysisText(
@@ -6124,17 +6446,41 @@ export default function App() {
 
               <div>
                 <h1 style={styles.topBarTitle}>식물 등록</h1>
-                <p style={styles.topBarDesc}>관찰할 식물의 이름과 특징을 정해요</p>
+                <p style={styles.topBarDesc}>사진 한 장이면 AI가 기본 정보를 채워요</p>
               </div>
             </header>
 
             <main style={styles.registerLayout}>
               <section style={styles.registerPreviewCard}>
                 <img
-                  src={mainImagePath}
+                  src={registrationImageData || mainImagePath}
                   alt="대표 식물"
-                  style={styles.registerPreviewImage}
+                  style={
+                    registrationImageData
+                      ? styles.registerPreviewPhoto
+                      : styles.registerPreviewImage
+                  }
                 />
+
+                <label style={styles.registerPhotoButton}>
+                  {registrationImageData ? "사진 바꾸기" : "사진으로 등록하기"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={styles.hiddenFileInput}
+                    onChange={handleRegistrationPhotoFileChange}
+                  />
+                </label>
+
+                {registrationImageData && (
+                  <button
+                    type="button"
+                    style={styles.registerPhotoRemoveButton}
+                    onClick={removeRegistrationPhoto}
+                  >
+                    사진 지우기
+                  </button>
+                )}
 
                 <h2 style={styles.registerPreviewTitle}>
                   {plantName.trim() || "새 식물"}
@@ -6145,14 +6491,38 @@ export default function App() {
                 </p>
 
                 <p style={styles.registerPreviewMemo}>
-                  {plantMemo.trim() ||
-                    "아이들이 관찰할 내용을 짧게 적어둘 수 있어요."}
+                  {isRegistrationPhotoAnalyzing
+                    ? "AI가 식물의 모습을 살펴보는 중이에요."
+                    : registrationPhotoAnalysis?.summary ||
+                      plantMemo.trim() ||
+                      "사진을 올리면 식물 종류와 특징을 자동으로 채워요."}
                 </p>
+
+                {registrationPhotoAnalysis?.visibleFeatures &&
+                  registrationPhotoAnalysis.visibleFeatures.length > 0 && (
+                    <div style={styles.registrationFeatureChips}>
+                      {registrationPhotoAnalysis.visibleFeatures.map((feature) => (
+                        <span key={feature} style={styles.registrationFeatureChip}>
+                          {feature}
+                        </span>
+                      ))}
+                    </div>
+                  )}
               </section>
 
               <section style={styles.registerFormCard}>
+                <div style={styles.registrationStepHeader}>
+                  <span style={styles.registrationStepBadge}>1</span>
+                  <div>
+                    <strong>이름과 종류를 확인해 주세요</strong>
+                    <p style={styles.registrationStepText}>
+                      사진을 올리면 AI가 먼저 채워요. 틀리면 바로 고칠 수 있어요.
+                    </p>
+                  </div>
+                </div>
+
                 <label style={styles.formLabel}>
-                  식물 이름
+                  식물 이름 또는 별명
                   <input
                     value={plantName}
                     onChange={(event) => setPlantName(event.target.value)}
@@ -6179,9 +6549,9 @@ export default function App() {
 
                 <div style={styles.teacherQuickBox}>
                   <div>
-                    <p style={styles.teacherQuickTitle}>식물 정보 자동 초안</p>
+                    <p style={styles.teacherQuickTitle}>AI 기본 정보</p>
                     <p style={styles.teacherQuickText}>
-                      자동 초안을 확인하고 저장하면 아이 질문 답변에 먼저 사용돼요.
+                      종류를 직접 입력했다면 이 버튼으로 돌봄 정보를 채울 수 있어요.
                     </p>
                   </div>
 
@@ -6191,7 +6561,7 @@ export default function App() {
                     disabled={isTeacherDraftLoading}
                     onClick={loadTeacherInfoDraft}
                   >
-                    {isTeacherDraftLoading ? "불러오는 중" : "자동 정보 불러오기"}
+                    {isTeacherDraftLoading ? "채우는 중" : "AI로 다시 채우기"}
                   </button>
                 </div>
 
@@ -6200,15 +6570,30 @@ export default function App() {
                   <span>{draftStatus.text}</span>
                 </div>
 
-                <label style={styles.formLabel}>
-                  관찰 메모
-                  <textarea
-                    value={plantMemo}
-                    onChange={(event) => setPlantMemo(event.target.value)}
-                    placeholder="예: 오늘 처음 만난 식물이에요."
-                    style={styles.formTextarea}
-                  />
-                </label>
+                <button
+                  type="button"
+                  style={styles.advancedInfoToggle}
+                  onClick={() => setShowAdvancedPlantInfo((prev) => !prev)}
+                >
+                  <span>
+                    {showAdvancedPlantInfo
+                      ? "세부 정보 접기"
+                      : "세부 정보 확인·수정"}
+                  </span>
+                  <span>{showAdvancedPlantInfo ? "▲" : "▼"}</span>
+                </button>
+
+                {showAdvancedPlantInfo && (
+                  <>
+                    <label style={styles.formLabel}>
+                      관찰 메모
+                      <textarea
+                        value={plantMemo}
+                        onChange={(event) => setPlantMemo(event.target.value)}
+                        placeholder="예: 오늘 처음 만난 식물이에요."
+                        style={styles.formTextarea}
+                      />
+                    </label>
 
                 <div style={styles.teacherInfoBox}>
                   <div style={styles.teacherInfoHeader}>
@@ -6466,6 +6851,40 @@ export default function App() {
                       style={styles.teacherTextarea}
                     />
                   </label>
+                </div>
+                  </>
+                )}
+
+                <div style={styles.dataBackupBox}>
+                  <div>
+                    <strong style={styles.dataBackupTitle}>기록 백업</strong>
+                    <p style={styles.dataBackupText}>
+                      사진·관찰·대화를 파일로 보관해요. OpenAI 키는 포함되지 않아요.
+                    </p>
+                  </div>
+                  <div style={styles.dataBackupActions}>
+                    <button
+                      type="button"
+                      style={styles.dataBackupButton}
+                      onClick={exportAppBackup}
+                    >
+                      백업 저장
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.dataRestoreButton}
+                      onClick={() => backupImportInputRef.current?.click()}
+                    >
+                      백업 불러오기
+                    </button>
+                    <input
+                      ref={backupImportInputRef}
+                      type="file"
+                      accept="application/json,.json"
+                      style={styles.hiddenFileInput}
+                      onChange={importAppBackup}
+                    />
+                  </div>
                 </div>
 
                 <div style={styles.registerButtonRow}>
@@ -6766,11 +7185,19 @@ export default function App() {
 
             <main style={styles.observeLayout}>
               <section style={styles.horizontalCardGrid}>
-                {observeCards.map((card) => (
+                {observeCards.map((card, index) => (
                   <button
                     key={card.title}
                     type="button"
-                    style={styles.largeFeatureCard}
+                    style={{
+                      ...styles.largeFeatureCard,
+                      background:
+                        index === 0
+                          ? "#F1F8FC"
+                          : index === 1
+                            ? "#F2F8EC"
+                            : "#FBF5E9",
+                    }}
                     onClick={card.action}
                   >
                     <img src={card.icon} alt={card.title} style={styles.featureIcon} />
@@ -6778,6 +7205,59 @@ export default function App() {
                     <p style={styles.featureDesc}>{card.desc}</p>
                   </button>
                 ))}
+              </section>
+
+              <section style={styles.observeRecentPanel}>
+                <div style={styles.observeRecentHeader}>
+                  <div>
+                    <span style={styles.observeRecentLabel}>최근 관찰</span>
+                    <strong style={styles.observeRecentTitle}>
+                      {recentObservationRecords.length > 0
+                        ? `${recentObservationRecords.length}개를 바로 볼 수 있어요`
+                        : "첫 관찰을 남겨보세요"}
+                    </strong>
+                  </div>
+                  {recentObservationRecords.length > 0 && (
+                    <button
+                      type="button"
+                      style={styles.observeRecentAllButton}
+                      onClick={() => setScreen("record")}
+                    >
+                      전체 기록
+                    </button>
+                  )}
+                </div>
+
+                {recentObservationRecords.length > 0 ? (
+                  <div style={styles.observeRecentGrid}>
+                    {recentObservationRecords.map((record) => (
+                      <button
+                        key={record.id}
+                        type="button"
+                        style={styles.observeRecentItem}
+                        onClick={() => {
+                          setRecordSummaryTab("records");
+                          setRecordTypeTab(record.type);
+                          setScreen("record");
+                        }}
+                      >
+                        <img
+                          src={record.firstIcon || "/icons/observe.png"}
+                          alt=""
+                          style={styles.observeRecentIcon}
+                        />
+                        <span>{record.title}</span>
+                        <strong>
+                          {record.firstValue || record.memo || record.date}
+                        </strong>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={styles.observeRecentEmpty}>
+                    사진, 잎, 흙 중 하나를 선택하면 여기에 최근 기록이 보여요.
+                  </div>
+                )}
               </section>
             </main>
           </div>
@@ -6843,6 +7323,19 @@ export default function App() {
                 </button>
               </section>
 
+              {lastCareAction && (
+                <div style={styles.careUndoBar}>
+                  <span>{lastCareAction.label} 기록을 반영했어요.</span>
+                  <button
+                    type="button"
+                    style={styles.careUndoButton}
+                    onClick={undoLastCareAction}
+                  >
+                    되돌리기
+                  </button>
+                </div>
+              )}
+
               <section style={styles.careCardRow}>
                 <div
                   style={styles.careCard}
@@ -6882,6 +7375,18 @@ export default function App() {
                   <p style={waterDone ? styles.doneStatusText : styles.statusText}>
                     {todayWaterCount} / {careState.waterGoal}회
                   </p>
+
+                  <div style={styles.careProgressTrack}>
+                    <span
+                      style={{
+                        ...styles.careWaterProgressFill,
+                        width: `${Math.min(
+                          100,
+                          (todayWaterCount / careState.waterGoal) * 100
+                        )}%`,
+                      }}
+                    />
+                  </div>
 
                   <div style={styles.goalControl}>
                     <button
@@ -6936,6 +7441,18 @@ export default function App() {
                   <p style={sunDone ? styles.doneStatusText : styles.statusText}>
                     {todaySunCount} / {careState.sunGoal}회
                   </p>
+
+                  <div style={styles.careProgressTrack}>
+                    <span
+                      style={{
+                        ...styles.careSunProgressFill,
+                        width: `${Math.min(
+                          100,
+                          (todaySunCount / careState.sunGoal) * 100
+                        )}%`,
+                      }}
+                    />
+                  </div>
 
                   <div style={styles.goalControl}>
                     <button
@@ -7266,11 +7783,19 @@ export default function App() {
                     <button
                       key={item.type}
                       type="button"
-                      style={
-                        recordTypeTab === item.type
+                      style={{
+                        ...(recordTypeTab === item.type
                           ? styles.recordTypeTabActive
-                          : styles.recordTypeTab
-                      }
+                          : styles.recordTypeTab),
+                        background:
+                          item.type === "soil"
+                            ? "#FBF3E4"
+                            : item.type === "leaf"
+                              ? "#EEF7E8"
+                              : item.type === "photo"
+                                ? "#EEF7FC"
+                                : "#F3F2EE",
+                      }}
                       onClick={() => setRecordTypeTab(item.type)}
                     >
                       <img
@@ -7520,10 +8045,31 @@ export default function App() {
                   </div>
 
                   {hasSelectedChild ? (
+                    <>
+                    <div style={styles.analysisEvidenceBar}>
+                      <span style={styles.analysisEvidenceLabel}>분석 근거</span>
+                      {activeChildRecords.length > 0 && (
+                        <span style={styles.analysisEvidenceChip}>
+                          관찰 {activeChildRecords.length}개
+                        </span>
+                      )}
+                      {activeChildMessages.length > 0 && (
+                        <span style={styles.analysisEvidenceChip}>
+                          질문 {activeChildMessages.length}개
+                        </span>
+                      )}
+                      {activeChildAnalyzedPhotoCount > 0 && (
+                        <span style={styles.analysisEvidencePhotoChip}>
+                          AI 사진 {activeChildAnalyzedPhotoCount}개
+                        </span>
+                      )}
+                    </div>
                     <div style={styles.curriculumReportGrid}>
                       <div style={styles.curriculumAreaCard}>
                         <h4 style={styles.curriculumAreaTitle}>자연탐구</h4>
-                        {childCurriculumReport.naturalInquiry.map((item) => (
+                        {childCurriculumReport.naturalInquiry
+                          .filter((item) => item.text)
+                          .map((item) => (
                           <div key={item.title} style={styles.curriculumItem}>
                             <strong style={styles.curriculumItemTitle}>
                               {item.title}
@@ -7535,7 +8081,9 @@ export default function App() {
 
                       <div style={styles.curriculumAreaCard}>
                         <h4 style={styles.curriculumAreaTitle}>의사소통</h4>
-                        {childCurriculumReport.communication.map((item) => (
+                        {childCurriculumReport.communication
+                          .filter((item) => item.text)
+                          .map((item) => (
                           <div key={item.title} style={styles.curriculumItem}>
                             <strong style={styles.curriculumItemTitle}>
                               {item.title}
@@ -7545,6 +8093,7 @@ export default function App() {
                         ))}
                       </div>
                     </div>
+                    </>
                   ) : (
                     <div style={styles.curriculumEmpty}>
                       아이를 선택하면 그 아이의 기록과 질문만 모아 자연탐구,
@@ -7642,6 +8191,33 @@ export default function App() {
                     {waterDoneToday ? "완료" : waterNeedsCare ? "물 줬어요" : "아직 괜찮아요"}
                   </button>
                 </div>
+
+                <div style={styles.homeCareEvidenceGrid}>
+                  <div style={styles.homeCareEvidenceSoil}>
+                    <span>최근 흙</span>
+                    <strong>
+                      {latestSoilRecord?.firstValue || "아직 기록 전"}
+                    </strong>
+                  </div>
+                  <div style={styles.homeCareEvidenceLeaf}>
+                    <span>최근 잎</span>
+                    <strong>
+                      {latestLeafRecord?.secondValue || "아직 기록 전"}
+                    </strong>
+                  </div>
+                  <div style={styles.homeCareEvidencePhoto}>
+                    <span>AI 사진</span>
+                    <strong>
+                      {latestPhotoAnalysis
+                        ? latestPhotoAnalysis.condition === "healthy"
+                          ? "좋아 보여요"
+                          : latestPhotoAnalysis.condition === "observe"
+                            ? "다시 살펴봐요"
+                            : "확인 필요"
+                        : "분석 전"}
+                    </strong>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -7663,6 +8239,28 @@ export default function App() {
                 </div>
                 <span style={styles.chatHeroArrow}>→</span>
               </button>
+
+              <section style={styles.homeProgressCard}>
+                <div style={styles.homeProgressHeader}>
+                  <div>
+                    <span style={styles.homeProgressLabel}>오늘 관찰</span>
+                    <strong style={styles.homeProgressValue}>
+                      {todayObservationCount} / 3 완료
+                    </strong>
+                  </div>
+                  <span style={styles.homeProgressPercent}>
+                    {todayObservationProgress}%
+                  </span>
+                </div>
+                <div style={styles.homeProgressTrack}>
+                  <span
+                    style={{
+                      ...styles.homeProgressFill,
+                      width: `${todayObservationProgress}%`,
+                    }}
+                  />
+                </div>
+              </section>
 
               {/* 관찰 버튼 3개 — 가로 나열 */}
               <div style={{
@@ -8179,11 +8777,13 @@ const styles: Record<string, CSSProperties> = {
     },
 
   homeLayout: {
+    flex: 1,
     display: "grid",
     gridTemplateColumns: "1fr 0.95fr",
     gap: "8px",
     minHeight: 0,
-    overflowY: "auto",
+    padding: "8px 14px",
+    overflow: "hidden",
     alignItems: "stretch",
   },
 
@@ -8377,10 +8977,63 @@ const styles: Record<string, CSSProperties> = {
   },
 
   todayCard: {
+    flex: 1,
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
     borderRadius: "18px",
     padding: "10px 12px",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+  },
+
+  homeCareEvidenceGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "7px",
+    marginTop: "9px",
+  },
+
+  homeCareEvidenceSoil: {
+    minWidth: 0,
+    border: "1px solid #E4D4AE",
+    borderRadius: "12px",
+    background: "#FFF8E7",
+    color: "#5B5239",
+    padding: "7px 8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
+
+  homeCareEvidenceLeaf: {
+    minWidth: 0,
+    border: "1px solid #CFE1C4",
+    borderRadius: "12px",
+    background: "#F0F7EA",
+    color: "#385E34",
+    padding: "7px 8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    fontSize: "11px",
+    fontWeight: 800,
+  },
+
+  homeCareEvidencePhoto: {
+    minWidth: 0,
+    border: "1px solid #C8DDE8",
+    borderRadius: "12px",
+    background: "#EDF7FB",
+    color: "#315B6D",
+    padding: "7px 8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    fontSize: "11px",
+    fontWeight: 800,
   },
 
   homeWaterAlert: {
@@ -8695,6 +9348,57 @@ const styles: Record<string, CSSProperties> = {
     objectFit: "contain",
   },
 
+  homeProgressCard: {
+    background: "#F3F9FC",
+    border: "1px solid #D6E6EE",
+    borderRadius: "14px",
+    padding: "9px 11px",
+  },
+
+  homeProgressHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    marginBottom: "7px",
+  },
+
+  homeProgressLabel: {
+    display: "block",
+    color: "#587385",
+    fontSize: "11px",
+    fontWeight: 900,
+  },
+
+  homeProgressValue: {
+    display: "block",
+    color: "#2F4F2F",
+    fontSize: "14px",
+    fontWeight: 950,
+    marginTop: "1px",
+  },
+
+  homeProgressPercent: {
+    color: "#315A70",
+    fontSize: "15px",
+    fontWeight: 950,
+  },
+
+  homeProgressTrack: {
+    height: "7px",
+    borderRadius: "999px",
+    background: "#DDEAF0",
+    overflow: "hidden",
+  },
+
+  homeProgressFill: {
+    display: "block",
+    height: "100%",
+    borderRadius: "999px",
+    background: "#69A9C7",
+    transition: "width 0.25s ease",
+  },
+
   chatHeroCard: {
     width: "100%",
     flex: 1,
@@ -8753,19 +9457,19 @@ const styles: Record<string, CSSProperties> = {
 
   registerLayout: {
     flex: 1,
-    padding: "18px 24px",
+    padding: "10px 16px",
     display: "grid",
-    gridTemplateColumns: "320px 1fr",
-    gap: "24px",
+    gridTemplateColumns: "280px 1fr",
+    gap: "14px",
     minHeight: 0,
-    overflowY: "auto",
+    overflow: "hidden",
   },
 
   registerPreviewCard: {
     background: "#F6F1DE",
     border: "1px solid #E4DABF",
-    borderRadius: "28px",
-    padding: "28px 24px",
+    borderRadius: "20px",
+    padding: "18px",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
@@ -8774,10 +9478,42 @@ const styles: Record<string, CSSProperties> = {
   },
 
   registerPreviewImage: {
-    width: "150px",
-    height: "150px",
+    width: "118px",
+    height: "118px",
     objectFit: "contain",
-    marginBottom: "18px",
+    marginBottom: "12px",
+  },
+
+  registerPreviewPhoto: {
+    width: "100%",
+    height: "190px",
+    objectFit: "cover",
+    borderRadius: "16px",
+    border: "1px solid #D6E6EE",
+    background: "#F1F8FC",
+    marginBottom: "12px",
+  },
+
+  registerPhotoButton: {
+    border: "none",
+    background: "#5F8D4E",
+    color: "#FFFFFF",
+    borderRadius: "999px",
+    padding: "10px 16px",
+    fontSize: "14px",
+    fontWeight: 900,
+    cursor: "pointer",
+    boxShadow: "0 5px 12px rgba(95, 141, 78, 0.2)",
+  },
+
+  registerPhotoRemoveButton: {
+    border: "none",
+    background: "transparent",
+    color: "#8A5C4B",
+    padding: "7px 10px",
+    fontSize: "12px",
+    fontWeight: 850,
+    cursor: "pointer",
   },
 
   registerPreviewTitle: {
@@ -8797,7 +9533,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   registerPreviewMemo: {
-    margin: "12px 0 0",
+    margin: "9px 0 0",
     color: "#6B7F5A",
     fontSize: "16px",
     fontWeight: 700,
@@ -8805,14 +9541,32 @@ const styles: Record<string, CSSProperties> = {
     wordBreak: "keep-all",
   },
 
+  registrationFeatureChips: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: "5px",
+    marginTop: "10px",
+  },
+
+  registrationFeatureChip: {
+    background: "#FFFFFF",
+    border: "1px solid #DCE8CF",
+    borderRadius: "999px",
+    padding: "5px 8px",
+    color: "#4F6B3F",
+    fontSize: "11px",
+    fontWeight: 850,
+  },
+
   registerFormCard: {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
-    borderRadius: "28px",
-    padding: "28px",
+    borderRadius: "20px",
+    padding: "16px",
     display: "flex",
     flexDirection: "column",
-    gap: "18px",
+    gap: "12px",
     minHeight: 0,
     overflowY: "auto",
   },
@@ -9163,6 +9917,7 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     minHeight: 0,
     overflow: "hidden",
+    gap: "8px",
   },
 
   largeFeatureCard: {
@@ -9178,6 +9933,89 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     justifyContent: "center",
     minHeight: 0,
+  },
+
+  observeRecentPanel: {
+    border: "1px solid #E2E8D9",
+    background: "#F8FAF4",
+    borderRadius: "16px",
+    padding: "10px 12px",
+    flexShrink: 0,
+  },
+
+  observeRecentHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
+    marginBottom: "7px",
+  },
+
+  observeRecentLabel: {
+    display: "block",
+    color: "#6B7F5A",
+    fontSize: "11px",
+    fontWeight: 900,
+  },
+
+  observeRecentTitle: {
+    display: "block",
+    color: "#2F4F2F",
+    fontSize: "14px",
+    fontWeight: 950,
+    marginTop: "1px",
+  },
+
+  observeRecentAllButton: {
+    border: "none",
+    background: "#E7F0DD",
+    color: "#3F6B34",
+    borderRadius: "999px",
+    padding: "7px 11px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  observeRecentGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: "7px",
+  },
+
+  observeRecentItem: {
+    border: "1px solid #E4DABF",
+    background: "#FFFFFF",
+    borderRadius: "12px",
+    padding: "7px 9px",
+    display: "grid",
+    gridTemplateColumns: "28px 1fr",
+    gap: "1px 7px",
+    alignItems: "center",
+    color: "#5F704B",
+    fontSize: "11px",
+    fontWeight: 850,
+    textAlign: "left",
+    cursor: "pointer",
+    minWidth: 0,
+  },
+
+  observeRecentIcon: {
+    width: "28px",
+    height: "28px",
+    objectFit: "contain",
+    gridRow: "1 / span 2",
+  },
+
+  observeRecentEmpty: {
+    border: "1px dashed #D8CFB8",
+    background: "#FFFFFF",
+    borderRadius: "12px",
+    padding: "11px",
+    color: "#6B7F5A",
+    fontSize: "12px",
+    fontWeight: 850,
+    textAlign: "center",
   },
 
   featureIcon: {
@@ -9212,6 +10050,104 @@ const styles: Record<string, CSSProperties> = {
     gap: "12px",
     minHeight: 0,
     overflowY: "auto",
+  },
+
+  registrationStepHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    color: "#2F4F2F",
+    fontSize: "16px",
+    fontWeight: 900,
+  },
+
+  registrationStepBadge: {
+    width: "30px",
+    height: "30px",
+    borderRadius: "50%",
+    background: "#FFF1B8",
+    border: "1px solid #E5C66D",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#6D561F",
+    flexShrink: 0,
+  },
+
+  registrationStepText: {
+    margin: "3px 0 0",
+    color: "#6B7F5A",
+    fontSize: "12px",
+    fontWeight: 750,
+    lineHeight: 1.35,
+  },
+
+  advancedInfoToggle: {
+    width: "100%",
+    border: "1px solid #DCE8CF",
+    background: "#F5F9F0",
+    color: "#3F6B34",
+    borderRadius: "14px",
+    padding: "11px 13px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: "14px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  dataBackupBox: {
+    border: "1px solid #D6E6EE",
+    background: "#F3F9FC",
+    borderRadius: "14px",
+    padding: "10px 12px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+  },
+
+  dataBackupTitle: {
+    color: "#315A70",
+    fontSize: "13px",
+    fontWeight: 900,
+  },
+
+  dataBackupText: {
+    margin: "3px 0 0",
+    color: "#5B7180",
+    fontSize: "11px",
+    fontWeight: 750,
+    lineHeight: 1.35,
+  },
+
+  dataBackupActions: {
+    display: "flex",
+    gap: "6px",
+    flexShrink: 0,
+  },
+
+  dataBackupButton: {
+    border: "none",
+    background: "#DDEFF8",
+    color: "#315A70",
+    borderRadius: "999px",
+    padding: "8px 11px",
+    fontSize: "11px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  dataRestoreButton: {
+    border: "1px solid #C8DDE8",
+    background: "#FFFFFF",
+    color: "#315A70",
+    borderRadius: "999px",
+    padding: "7px 11px",
+    fontSize: "11px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 
   photoRecordLayout: {
@@ -9855,11 +10791,11 @@ const styles: Record<string, CSSProperties> = {
   },
 
   curriculumReportBox: {
-    background: "#FFF8D8",
-    border: "2px solid #E3BE3C",
-    borderRadius: "24px",
-    padding: "16px",
-    marginBottom: "16px",
+    background: "#F8FAF4",
+    border: "1px solid #DCE8CF",
+    borderRadius: "18px",
+    padding: "12px",
+    marginBottom: "10px",
   },
 
   curriculumReportHeader: {
@@ -9872,8 +10808,43 @@ const styles: Record<string, CSSProperties> = {
 
   curriculumReportGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: "12px",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: "8px",
+  },
+
+  analysisEvidenceBar: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: "6px",
+    marginBottom: "9px",
+  },
+
+  analysisEvidenceLabel: {
+    color: "#5F704B",
+    fontSize: "12px",
+    fontWeight: 950,
+    marginRight: "2px",
+  },
+
+  analysisEvidenceChip: {
+    background: "#FFFFFF",
+    border: "1px solid #DCE8CF",
+    color: "#3F6B34",
+    borderRadius: "999px",
+    padding: "5px 9px",
+    fontSize: "11px",
+    fontWeight: 900,
+  },
+
+  analysisEvidencePhotoChip: {
+    background: "#EEF7FC",
+    border: "1px solid #C8DFEA",
+    color: "#315A70",
+    borderRadius: "999px",
+    padding: "5px 9px",
+    fontSize: "11px",
+    fontWeight: 900,
   },
 
   curriculumAreaCard: {
@@ -9897,8 +10868,8 @@ const styles: Record<string, CSSProperties> = {
     padding: "11px 12px",
     marginBottom: "8px",
     display: "grid",
-    gridTemplateColumns: "170px 1fr",
-    gap: "12px",
+    gridTemplateColumns: "120px 1fr",
+    gap: "8px",
     alignItems: "start",
     color: "#42553A",
     fontSize: "14px",
@@ -10591,6 +11562,18 @@ const styles: Record<string, CSSProperties> = {
     gap: "3px",
   },
 
+  photoAnalysisComparison: {
+    background: "#EEF7FC",
+    border: "1px solid #C8DFEA",
+    borderRadius: "12px",
+    padding: "8px 10px",
+    color: "#315A70",
+    display: "flex",
+    flexDirection: "column",
+    gap: "3px",
+    fontWeight: 900,
+  },
+
   photoAnalysisAction: {
     background: "#FFF7D8",
     border: "1px solid #E5C66D",
@@ -10646,8 +11629,8 @@ const styles: Record<string, CSSProperties> = {
   },
 
   careSummaryItemWater: {
-    background: "#EEF7E7",
-    border: "1px solid #BFD7B3",
+    background: "#EEF7FC",
+    border: "1px solid #C8DFEA",
     borderRadius: "14px",
     padding: "8px 10px",
     display: "flex",
@@ -10667,7 +11650,7 @@ const styles: Record<string, CSSProperties> = {
 
   resetButton: {
     border: "none",
-    background: "#F2F7EA",
+    background: "#F1F2EE",
     color: "#315E2F",
     borderRadius: "14px",
     padding: "8px 12px",
@@ -10675,6 +11658,31 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     cursor: "pointer",
     boxShadow: "0 4px 10px rgba(80, 80, 60, 0.06)",
+  },
+
+  careUndoBar: {
+    background: "#EDF7E8",
+    border: "1px solid #C7DFC2",
+    borderRadius: "12px",
+    padding: "7px 10px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "10px",
+    color: "#3F6B34",
+    fontSize: "12px",
+    fontWeight: 900,
+  },
+
+  careUndoButton: {
+    border: "none",
+    background: "#FFFFFF",
+    color: "#3F6B34",
+    borderRadius: "999px",
+    padding: "6px 10px",
+    fontSize: "11px",
+    fontWeight: 950,
+    cursor: "pointer",
   },
 
   waterReminderBox: {
@@ -10742,28 +11750,29 @@ const styles: Record<string, CSSProperties> = {
     background: "#FFFFFF",
     border: "1px solid #E8E1C8",
     borderRadius: "16px",
-    padding: "14px 12px",
+    padding: "18px 14px",
     textAlign: "center",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     minHeight: "0",
+    gap: "3px",
   },
 
   careMotionStage: {
     position: "relative",
-    width: "96px",
-    height: "58px",
-    marginBottom: "4px",
+    width: "142px",
+    height: "92px",
+    marginBottom: "7px",
   },
 
   careMotionPlant: {
     position: "absolute",
     left: "40%",
     bottom: "0",
-    width: "38px",
-    height: "38px",
+    width: "62px",
+    height: "62px",
     objectFit: "contain",
     transform: "translateX(-50%)",
   },
@@ -10772,8 +11781,8 @@ const styles: Record<string, CSSProperties> = {
     position: "absolute",
     right: "0",
     top: "2px",
-    width: "36px",
-    height: "36px",
+    width: "54px",
+    height: "54px",
     objectFit: "contain",
     transformOrigin: "18% 82%",
     zIndex: 2,
@@ -10783,8 +11792,8 @@ const styles: Record<string, CSSProperties> = {
     position: "absolute",
     left: "68%",
     top: "0",
-    width: "40px",
-    height: "40px",
+    width: "58px",
+    height: "58px",
     objectFit: "contain",
     transform: "translateX(-50%)",
   },
@@ -10816,16 +11825,16 @@ const styles: Record<string, CSSProperties> = {
   },
 
   statusText: {
-    margin: "2px 0",
+    margin: "3px 0",
     color: "#7B7B67",
-    fontSize: "14px",
+    fontSize: "16px",
     fontWeight: 900,
   },
 
   doneStatusText: {
-    margin: "2px 0",
+    margin: "3px 0",
     color: "#4F8A3C",
-    fontSize: "14px",
+    fontSize: "16px",
     fontWeight: 900,
   },
 
@@ -10837,20 +11846,20 @@ const styles: Record<string, CSSProperties> = {
   },
 
   goalButton: {
-    width: "30px",
-    height: "30px",
+    width: "36px",
+    height: "36px",
     border: "none",
     borderRadius: "50%",
     background: "#E7F0DD",
     color: "#3F6B34",
-    fontSize: "18px",
+    fontSize: "20px",
     fontWeight: 900,
     cursor: "pointer",
   },
 
   goalText: {
     color: "#4F6B3F",
-    fontSize: "14px",
+    fontSize: "15px",
     fontWeight: 900,
     minWidth: "80px",
   },
@@ -10860,8 +11869,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#5F8D4E",
     color: "white",
     borderRadius: "999px",
-    padding: "8px 14px",
-    fontSize: "13px",
+    padding: "10px 18px",
+    fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
     boxShadow: "0 4px 10px rgba(95, 141, 78, 0.24)",
@@ -10872,8 +11881,8 @@ const styles: Record<string, CSSProperties> = {
     background: "#8DBE7A",
     color: "white",
     borderRadius: "999px",
-    padding: "8px 14px",
-    fontSize: "13px",
+    padding: "10px 18px",
+    fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
     boxShadow: "0 8px 18px rgba(95, 141, 78, 0.24)",
@@ -10933,8 +11942,33 @@ const styles: Record<string, CSSProperties> = {
   chatPlantName: {
     margin: 0,
     color: "#2F4F2F",
-    fontSize: "17px",
+    fontSize: "22px",
     fontWeight: 900,
+  },
+
+  careProgressTrack: {
+    width: "min(220px, 68%)",
+    height: "7px",
+    background: "#ECEBE3",
+    borderRadius: "999px",
+    overflow: "hidden",
+    margin: "2px 0 7px",
+  },
+
+  careWaterProgressFill: {
+    display: "block",
+    height: "100%",
+    borderRadius: "999px",
+    background: "#69A9C7",
+    transition: "width 0.25s ease",
+  },
+
+  careSunProgressFill: {
+    display: "block",
+    height: "100%",
+    borderRadius: "999px",
+    background: "#E5B84B",
+    transition: "width 0.25s ease",
   },
 
   chatPlantDesc: {

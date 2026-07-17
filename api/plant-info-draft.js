@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
 
+const DEFAULT_MODEL = 'gpt-5-mini';
+
 function getOpenAiApiKey(req) {
   const headerKey = req.headers['x-openai-api-key'];
   const bodyKey = req.body?.openAiApiKey;
@@ -17,6 +19,9 @@ function buildPrompt(plantType) {
     '문장은 초등학생에게 설명하기 쉬운 말로 작성하되, 교사가 검토할 수 있도록 각 항목은 정보가 충분해야 합니다.',
     '아이들이 자주 묻는 질문에 답할 수 있게 "언제", "어떤 색", "얼마나", "무엇을 좋아/싫어", "왜 시들어", "먹어도 돼"에 대한 단서를 넣으세요.',
     'summary에는 이 식물이 어떤 식물인지, 아이가 바로 관찰할 대표 특징 2~3개를 쓰세요.',
+    'originInfo에는 원산지나 주로 자라는 환경을 단정하지 않는 쉬운 말로 쓰세요.',
+    'classificationInfo에는 허브, 관엽식물, 채소처럼 교사가 이해하기 쉬운 넓은 분류를 쓰세요.',
+    'nameStoryInfo에는 이름의 유래나 특징을 확실한 범위에서만 쓰고, 불확실하면 이름과 생김새를 연결해 관찰하도록 안내하세요.',
     'edibleInfo에는 먹을 수 있는 부위, 먹을 수 있는 시기/상태, 어떻게 섭취하는지 예시, 먹기 전 확인할 위생/안전 조건을 쓰세요. 불확실하면 불확실하다고 쓰세요.',
     'flowerInfo에는 꽃이 필 수 있는지, 보통 꽃 색은 무엇인지, 어떤 시기/조건에서 피는지 쓰세요.',
     'fruitInfo에는 열매/씨앗이 생기는지, 생긴다면 색 변화나 관찰 시기를 쓰세요.',
@@ -35,7 +40,7 @@ function buildPrompt(plantType) {
     'dislikeInfo에는 식물이 힘들어하는 환경과 나타날 수 있는 신호를 1~2문장으로 쓰세요.',
     'childAnswerHints에는 아이 질문에 답할 때 쓸 핵심 힌트 3~5개를 쓰세요.',
     '',
-    '반드시 JSON만 출력하세요. 키: summary, edibleInfo, flowerInfo, fruitInfo, observationPoints, caution, growthInfo, careInfo, recommendedWaterIntervalDays, recommendedSunGoal, careChecklist, lightInfo, environmentInfo, lifecycleInfo, smellInfo, favoriteInfo, dislikeInfo, childAnswerHints',
+    '반드시 JSON만 출력하세요. 키: summary, originInfo, classificationInfo, nameStoryInfo, edibleInfo, flowerInfo, fruitInfo, observationPoints, caution, growthInfo, careInfo, recommendedWaterIntervalDays, recommendedSunGoal, careChecklist, lightInfo, environmentInfo, lifecycleInfo, smellInfo, favoriteInfo, dislikeInfo, childAnswerHints',
   ].join('\n');
 }
 
@@ -68,21 +73,18 @@ export default async function handler(req, res) {
     }
 
     const openai = new OpenAI({ apiKey });
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: '식물 정보 전문가입니다. 요청한 형식의 JSON만 출력합니다.',
+    const response = await openai.responses.create({
+      model: process.env.OPENAI_PLANT_INFO_MODEL || DEFAULT_MODEL,
+      input: buildPrompt(plantType.trim()),
+      text: {
+        format: {
+          type: 'json_object',
         },
-        { role: 'user', content: buildPrompt(plantType.trim()) },
-      ],
-      max_tokens: 1500,
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
+      },
+      max_output_tokens: 1800,
     });
 
-    const raw = response.choices[0]?.message?.content ?? '';
+    const raw = response.output_text ?? '';
     const data = parseJson(raw);
 
     if (!data) {

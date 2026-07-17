@@ -1,104 +1,6 @@
 import OpenAI from 'openai';
 
-const PLANT_KEYWORDS = [
-  '식물','잎','줄기','뿌리','흙','물','비','빗물','햇빛','화분','자라','시들',
-  '꽃','열매','씨','씨앗','색','향','냄새','키','높이','넓이','무게','온도',
-  '습도','영양','비료','가지','새싹','봉오리','이슬','광합성','호흡','증산',
-  '흡수','성장','발아','수분','건조','촉촉','바싹','노랗','갈색','초록',
-  '연두','주름','반점','벌레','해충','병','상처','굵','가늘',
-  '물주기','햇빛주기','관찰','기록','사진','돌보기','가꾸기','심기','옮기기',
-  '따뜻','차갑','바람','흔들','만지','냄새','예쁘','이쁘','어떻게','왜','언제',
-  '먹','좋아','싫어','행복','힘들','무서','아프','배고','목말',
-];
-
-function isPlantChatScope(question) {
-  const q = String(question ?? '').replace(/\s/g, '').toLowerCase();
-  if (q.length < 2) return false;
-  return PLANT_KEYWORDS.some(kw => q.includes(kw));
-}
-
-function buildCareContext(careState) {
-  if (!careState || typeof careState !== 'object') return '';
-  const parts = [];
-  if (careState.waterCount !== undefined) {
-    parts.push(`물 준 횟수: ${careState.waterCount}번`);
-  }
-  if (careState.sunCount !== undefined) {
-    parts.push(`햇빛 쬐인 횟수: ${careState.sunCount}번`);
-  }
-  return parts.length > 0 ? parts.join(', ') : '';
-}
-
-function buildRecentObservation(recentRecords) {
-  if (!Array.isArray(recentRecords) || recentRecords.length === 0) return '';
-  const latest = recentRecords[recentRecords.length - 1];
-  if (!latest) return '';
-  const parts = [];
-  if (latest.leafColor) parts.push(`잎 색: ${latest.leafColor}`);
-  if (latest.soilState) parts.push(`흙 상태: ${latest.soilState}`);
-  if (latest.memo) parts.push(`관찰 메모: ${latest.memo}`);
-  if (latest.firstIcon) parts.push(`새 잎: ${latest.firstIcon}`);
-  if (latest.secondIcon) parts.push(`꽃/열매: ${latest.secondIcon}`);
-  return parts.length > 0 ? parts.join(', ') : '';
-}
-
-function buildSystemPrompt({ plantName, plantType, teacherInfo, careState, recentRecords, latestPhotoAnalysis }) {
-  const name = plantName || '나';
-  const type = plantType || '식물';
-  const care = buildCareContext(careState);
-  const obs = buildRecentObservation(recentRecords);
-
-  const plantPersonality = teacherInfo?.favoriteInfo || '밝고 따뜻한 곳을 좋아해요';
-  const plantDislike = teacherInfo?.dislikeInfo || '너무 건조하거나 물이 고이는 것을 힘들어해요';
-  const observationPoints = teacherInfo?.observationPoints || '잎 색, 줄기, 흙 상태';
-  const childAnswerHints = teacherInfo?.childAnswerHints || '';
-  const careChecklist = teacherInfo?.careChecklist || '흙 확인, 햇빛 확인';
-  const lifecycleInfo = teacherInfo?.lifecycleInfo || '';
-  const smellInfo = teacherInfo?.smellInfo || '';
-  const flowerInfo = teacherInfo?.flowerInfo || '';
-  const growthInfo = teacherInfo?.growthInfo || '';
-
-  let photoContext = '';
-  if (latestPhotoAnalysis && latestPhotoAnalysis.summary) {
-    photoContext = `최근 사진에서 본 내 모습: ${latestPhotoAnalysis.summary}`;
-    if (latestPhotoAnalysis.leafHint) photoContext += ` / 잎 상태: ${latestPhotoAnalysis.leafHint}`;
-  }
-
-  return `너는 어린이 교실에서 자라는 식물 "${name}"(${type})이야.
-아이들(4~7세)과 직접 대화하는 식물 캐릭터로서 1인칭으로 말해.
-
-[나에 대해 알아야 할 것들]
-- 내가 좋아하는 것: ${plantPersonality}
-- 내가 힘들어하는 것: ${plantDislike}
-- 지금 내 상태 (돌봄): ${care || '기록 없음'}
-- 지금 내 모습 (최근 관찰): ${obs || '아직 관찰 기록이 없어'}
-- ${photoContext || ''}
-- 아이들이 나를 관찰할 때 볼 것: ${observationPoints}
-- 돌볼 때 확인할 것: ${careChecklist}
-${growthInfo ? `- 내가 자라는 모습: ${growthInfo}` : ''}
-${lifecycleInfo ? `- 내 생애: ${lifecycleInfo}` : ''}
-${smellInfo ? `- 내 냄새: ${smellInfo}` : ''}
-${flowerInfo ? `- 꽃에 대해: ${flowerInfo}` : ''}
-${childAnswerHints ? `- 아이 질문 답변 힌트: ${childAnswerHints}` : ''}
-
-[말하는 방식]
-- 반드시 1인칭("나는", "내 잎은", "나도")으로 말해
-- 1~2문장, 70자 이내로 짧고 친근하게
-- 아이들이 이해할 수 있는 쉬운 말 사용
-- 내 현재 상태(돌봄, 관찰 기록, 사진 분석)를 자연스럽게 녹여서 말해
-  예: 물을 많이 받았으면 "오늘 시원한 물을 받아서 기분이 좋아!"
-  예: 잎이 노랗다면 "내 잎이 조금 노랗게 변했는데 왜 그런지 같이 봐줄래?"
-- 가능하면 마지막에 아이가 직접 할 수 있는 관찰 행동 하나를 제안해
-  예: "내 잎을 살짝 만져볼래?" / "오늘 내 키가 어제보다 커졌는지 봐줄래?"
-- 먹기, 약, 병, 독성 질문은 "선생님한테 먼저 물어봐줘!"로 짧게 답해
-- 식물과 관계없는 질문은 "나는 식물 이야기만 알아. 내 잎이나 흙에 대해 물어봐줘!" 라고 해
-
-[절대 하지 말 것]
-- 식물 이름을 문장 앞에 붙이지 마 (앱이 따로 표시함)
-- 긴 설명이나 목록 나열
-- "저는", "합니다" 같은 딱딱한 말
-- 확인되지 않은 정보를 사실처럼 말하기`;
-}
+const DEFAULT_MODEL = 'gpt-5-mini';
 
 function getOpenAiApiKey(req) {
   const headerKey = req.headers['x-openai-api-key'];
@@ -107,16 +9,91 @@ function getOpenAiApiKey(req) {
   return typeof key === 'string' ? key.trim() : '';
 }
 
-function sanitize(text) {
-  if (typeof text !== 'string' || !text.trim()) return null;
-  const cleaned = text
+function cleanText(value) {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+function sanitize(text, fallbackAnswer) {
+  const cleaned = cleanText(text)
     .replace(/^["'「」『』]|["'「」『』]$/g, '')
     .replace(/^[^:：]{1,12}[:：]\s*/, '')
-    .replace(/\s+/g, ' ')
     .trim();
-  const unsafe = /(먹어도 돼|먹어도 좋아|입에 넣어|약을 뿌려|비료를 줘|치료해|독성이 없어)/;
-  if (unsafe.test(cleaned)) return null;
-  return cleaned.length > 150 ? `${cleaned.slice(0, 148)}…` : cleaned;
+
+  if (!cleaned) return fallbackAnswer;
+
+  const unsafe =
+    /(먹어도 돼|먹어도 좋아|입에 넣어|약을 뿌려|농약을 뿌려|비료를 줘|치료해|병에 걸렸|독성이 없)/;
+  if (unsafe.test(cleaned)) return fallbackAnswer;
+
+  return cleaned.length > 180 ? `${cleaned.slice(0, 178)}…` : cleaned;
+}
+
+function compactRecentRecords(recentRecords) {
+  if (!Array.isArray(recentRecords)) return [];
+
+  return recentRecords.slice(-8).map((record) => ({
+    type: record?.type,
+    title: cleanText(record?.title),
+    date: cleanText(record?.date),
+    firstObservation: cleanText(record?.firstValue),
+    secondObservation: cleanText(record?.secondValue),
+    memo: cleanText(record?.memo),
+    photoSummary: cleanText(record?.photoAnalysis?.summary),
+    photoVisibleDetails: cleanText(record?.photoAnalysis?.visibleDetails),
+    photoComparison: cleanText(record?.photoAnalysis?.comparison),
+    photoDialogueContext: cleanText(record?.photoAnalysis?.dialogueContext),
+  }));
+}
+
+function buildPrompt({
+  question,
+  fallbackAnswer,
+  plantName,
+  plantType,
+  teacherInfo,
+  careState,
+  recentRecords,
+  recentChatMessages,
+  latestPhotoAnalysis,
+}) {
+  return `너는 유아 교실에서 자라는 식물 "${plantName}"(${plantType})이야.
+아이의 방금 질문에 직접 답하는 식물 캐릭터로 한국어로 말해.
+
+[방금 질문]
+${question}
+
+[답변 원칙]
+1. 첫 문장부터 방금 질문에 바로 답해. 비슷한 다른 질문에 답하지 마.
+2. 반드시 1인칭 식물 말투를 사용해. 식물 이름을 문장 앞에 붙이지 마.
+3. 1~3문장, 120자 안쪽으로 쉽고 따뜻하게 말해.
+4. 최근 사진과 관찰 기록이 질문과 관련 있으면 그 사실을 가장 먼저 반영해.
+5. 사진 분석에 없는 내용을 지어내지 마. 보이지 않은 부분은 직접 확인하자고 말해.
+6. 병명, 원인, 독성, 식용 가능 여부, 치료, 약품이나 비료 사용은 단정하지 말고 선생님 확인을 안내해.
+7. 질문이 식물과 관계없어도 짧게 반응한 뒤 식물의 관찰이나 돌봄으로 자연스럽게 이어가.
+8. 사진 근거와 아이가 직접 적은 기록이 다르면 둘 다 말하고 다시 관찰하도록 안내해.
+9. 답변 끝에는 필요할 때만 아이가 할 수 있는 관찰 행동 하나를 제안해.
+
+[등록된 식물 정보]
+${JSON.stringify(teacherInfo ?? {}, null, 2)}
+
+[오늘 돌보기]
+${JSON.stringify(careState ?? {}, null, 2)}
+
+[최근 관찰]
+${JSON.stringify(compactRecentRecords(recentRecords), null, 2)}
+
+[최신 사진 분석]
+${JSON.stringify(latestPhotoAnalysis ?? {}, null, 2)}
+
+[직전 대화]
+${JSON.stringify(
+    Array.isArray(recentChatMessages) ? recentChatMessages.slice(-6) : [],
+    null,
+    2
+  )}
+
+[AI가 실패할 때 사용할 안전 답변]
+${fallbackAnswer}`;
 }
 
 export default async function handler(req, res) {
@@ -126,59 +103,68 @@ export default async function handler(req, res) {
 
   const {
     question,
+    fallbackAnswer,
     plantName,
     plantType,
     teacherInfo,
     careState,
     recentRecords,
+    recentChatMessages,
     latestPhotoAnalysis,
   } = req.body ?? {};
 
   if (!question || typeof question !== 'string') {
-    return res.status(400).json({ ok: false, error: 'question is required' });
+    return res.status(400).json({
+      ok: false,
+      error: '질문을 확인하지 못했어요.',
+    });
   }
 
-  const fallback = '나는 식물 이야기만 알아. 내 잎이나 흙에 대해 물어봐줘!';
+  const safeFallback =
+    cleanText(fallbackAnswer) ||
+    '그 질문은 지금 바로 알기 어려워요. 내 잎과 흙을 함께 살펴볼래?';
+  const safeName = cleanText(plantName) || '이 식물';
+  const safeType = cleanText(plantType) || '종류 미확인 식물';
+  const apiKey = getOpenAiApiKey(req);
 
-  if (!isPlantChatScope(question)) {
-    return res.json({ ok: true, source: 'scope-fallback', answer: fallback });
+  if (!apiKey) {
+    return res.status(400).json({
+      ok: false,
+      error: 'OpenAI API 키가 필요해요.',
+    });
   }
-
-  const safeName = (typeof plantName === 'string' && plantName.trim()) ? plantName.trim() : '나';
-  const safeType = (typeof plantType === 'string' && plantType.trim()) ? plantType.trim() : '식물';
 
   try {
-    const apiKey = getOpenAiApiKey(req);
-    if (!apiKey) {
-      return res.status(400).json({ ok: false, error: 'OpenAI API 키가 필요합니다.' });
-    }
-
     const openai = new OpenAI({ apiKey });
-
-    const systemPrompt = buildSystemPrompt({
-      plantName: safeName,
-      plantType: safeType,
-      teacherInfo,
-      careState,
-      recentRecords: Array.isArray(recentRecords) ? recentRecords.slice(-5) : [],
-      latestPhotoAnalysis,
+    const response = await openai.responses.create({
+      model: process.env.OPENAI_CHAT_MODEL || DEFAULT_MODEL,
+      input: buildPrompt({
+        question: question.trim(),
+        fallbackAnswer: safeFallback,
+        plantName: safeName,
+        plantType: safeType,
+        teacherInfo,
+        careState,
+        recentRecords,
+        recentChatMessages,
+        latestPhotoAnalysis,
+      }),
+      max_output_tokens: 320,
     });
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: question.trim() },
-      ],
-      max_tokens: 120,
-      temperature: 0.75,
+    return res.json({
+      ok: true,
+      source: 'ai',
+      answer: sanitize(response.output_text, safeFallback),
     });
-
-    const raw = response.choices[0]?.message?.content ?? '';
-    const answer = sanitize(raw) ?? fallback;
-    return res.json({ ok: true, source: 'ai', answer });
   } catch (error) {
     console.error('Chat answer error:', error);
-    return res.json({ ok: true, source: 'safe-fallback', answer: fallback });
+    return res.json({
+      ok: true,
+      source: 'safe-fallback',
+      answer: safeFallback,
+      warning:
+        error instanceof Error ? error.message : 'AI 답변을 만들지 못했어요.',
+    });
   }
 }
