@@ -1995,6 +1995,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("start");
   const [message, setMessage] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [showChatHistory, setShowChatHistory] = useState(false);
   const [aiChatCache, setAiChatCache] = useState<Record<string, string>>({});
   const [aiChatUsage, setAiChatUsage] = useState<AiChatUsage>({
     dateKey: "",
@@ -2636,7 +2637,7 @@ export default function App() {
   const activeChildMessages = chatMessages.filter(
     (message) => (message.childName || "아이 미지정") === activeChildName
   );
-  const visibleChatMessages = chatMessages.slice(-1);
+  const visibleChatMessages = showChatHistory ? chatMessages : chatMessages.slice(-1);
   const hiddenChatMessageCount = Math.max(
     0,
     chatMessages.length - visibleChatMessages.length
@@ -6548,10 +6549,16 @@ export default function App() {
                     </button>
                   </div>
 
-                  {hiddenChatMessageCount > 0 && (
-                    <div style={styles.chatHistoryNotice}>
-                      이전 대화 {hiddenChatMessageCount}개는 저장되어 있어요.
-                    </div>
+                  {chatMessages.length > 1 && (
+                    <button
+                      type="button"
+                      style={styles.chatHistoryNotice}
+                      onClick={() => setShowChatHistory((prev) => !prev)}
+                    >
+                      {showChatHistory
+                        ? "이전 대화 접기"
+                        : `이전 대화 ${hiddenChatMessageCount}개 보기`}
+                    </button>
                   )}
 
                   {visibleChatMessages.map((chatMessage) => (
@@ -10874,11 +10881,13 @@ const styles: Record<string, CSSProperties> = {
     alignSelf: "center",
     background: "#F3EEDC",
     color: "#6B7F5A",
+    border: "1px solid #E4DABF",
     borderRadius: "999px",
     padding: "5px 10px",
     fontSize: "12px",
     fontWeight: 900,
     lineHeight: 1.2,
+    cursor: "pointer",
   },
 
   chatBubbleLabel: {
