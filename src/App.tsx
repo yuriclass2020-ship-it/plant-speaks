@@ -6805,12 +6805,12 @@ export default function App() {
 
             <main style={styles.careLayout}>
               <section style={styles.careTopSummary}>
-                <div style={styles.careSummaryItem}>
+                <div style={styles.careSummaryItemFocus}>
                   <span style={styles.careSimpleCheckLabel}>오늘 볼 것</span>
                   <strong style={styles.careSummaryText}>{careFocusText}</strong>
                 </div>
 
-                <div style={styles.careSummaryItem}>
+                <div style={styles.careSummaryItemWater}>
                   <span style={styles.waterReminderLabel}>다음 물 주기</span>
                   <strong style={styles.careSummaryText}>{nextWateringText}</strong>
                   <div style={styles.goalControlCompact}>
@@ -6989,6 +6989,53 @@ export default function App() {
 
             <main style={styles.recordLayout}>
               <section style={styles.recordSideTabs}>
+                <div style={styles.recordSideSummary}>
+                  <span style={styles.todayRecordLabel}>저장된 전체 기록</span>
+                  <strong style={styles.todayRecordDate}>
+                    {selectedRecordDateKey === "all"
+                      ? "전체 날짜"
+                      : formatDateKey(selectedRecordDateKey)}
+                  </strong>
+                  <span style={styles.todayRecordCount}>
+                    오늘 {todayRecords.length}개 · 지난 기록 {pastRecords.length}개
+                  </span>
+                </div>
+
+                {recordSummaryTab === "records" && (
+                  <div style={styles.recordSideDateFilterBox}>
+                    <input
+                      type="date"
+                      value={
+                        selectedRecordDateKey === "all"
+                          ? todayKey
+                          : selectedRecordDateKey
+                      }
+                      onChange={(event) =>
+                        setSelectedRecordDateKey(event.target.value)
+                      }
+                      style={styles.recordDateInput}
+                    />
+
+                    <div style={styles.recordSideDateButtons}>
+                      <button
+                        type="button"
+                        style={styles.recordDateFilterButton}
+                        onClick={() => setSelectedRecordDateKey(todayKey)}
+                      >
+                        오늘 보기
+                      </button>
+
+                      <button
+                        type="button"
+                        style={styles.recordDateFilterButton}
+                        onClick={() => setSelectedRecordDateKey("all")}
+                      >
+                        전체 보기
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {[
                   ["records", "흙·잎·사진"],
                   ["weekly", "이번 주 변화"],
@@ -7015,21 +7062,6 @@ export default function App() {
               </section>
 
               <section style={styles.recordListPanel}>
-                <div style={styles.todayRecordHeader}>
-                  <div>
-                    <p style={styles.todayRecordLabel}>저장된 전체 기록</p>
-                    <h2 style={styles.todayRecordDate}>
-                      {selectedRecordDateKey === "all"
-                        ? "전체 날짜"
-                        : formatDateKey(selectedRecordDateKey)}
-                    </h2>
-                  </div>
-
-                  <span style={styles.todayRecordCount}>
-                    오늘 {todayRecords.length}개 · 지난 기록 {pastRecords.length}개
-                  </span>
-                </div>
-
                 {recordSaveNotice && (
                   <div style={styles.recordSaveNotice}>
                     <span style={styles.recordSaveIcon}>완료</span>
@@ -7229,37 +7261,6 @@ export default function App() {
 
                 {recordSummaryTab === "records" && (
                 <>
-                <div style={styles.recordDateFilterBox}>
-                  <input
-                    type="date"
-                    value={
-                      selectedRecordDateKey === "all"
-                        ? todayKey
-                        : selectedRecordDateKey
-                    }
-                    onChange={(event) =>
-                      setSelectedRecordDateKey(event.target.value)
-                    }
-                    style={styles.recordDateInput}
-                  />
-
-                  <button
-                    type="button"
-                    style={styles.recordDateFilterButton}
-                    onClick={() => setSelectedRecordDateKey(todayKey)}
-                  >
-                    오늘 보기
-                  </button>
-
-                  <button
-                    type="button"
-                    style={styles.recordDateFilterButton}
-                    onClick={() => setSelectedRecordDateKey("all")}
-                  >
-                    전체 보기
-                  </button>
-                </div>
-
                 <div style={styles.recordTypeTabs}>
                   {recordTypeTabItems.map((item) => (
                     <button
@@ -7310,22 +7311,38 @@ export default function App() {
           {renderMotionStyles()}
 
           <div style={styles.screenContent}>
-            {renderTopBar("분석", "아이별 기록을 누리과정 관점으로 살펴봐요")}
+            {renderTopBar("분석", "아이별 기록을 누리과정 관점으로 살펴봐요", {
+              icon: "/icons/growth.png",
+              hideDesc: true,
+            })}
 
             <main style={styles.recordLayout}>
-              <section style={styles.sideInfoCard}>
-                <img src="/icons/growth.png" alt="분석" style={styles.sideInfoIcon} />
-
-                <h2 style={styles.sideInfoTitle}>개별 아이 분석</h2>
-
-                <p style={styles.sideInfoText}>
-                  아이를 선택하면 그 아이의 관찰 기록과 질문만 모아 자연탐구,
-                  의사소통 하위범주로 정리해요.
-                </p>
-
+              <section style={styles.analysisSideTabs}>
+                {[
+                  ["report", "개별 분석"],
+                  ["roster", "반 아이 목록"],
+                  ["participation", "참여 빈도"],
+                ].map(([tabKey, label]) => (
+                  <button
+                    key={tabKey}
+                    type="button"
+                    style={
+                      analysisTab === tabKey
+                        ? styles.analysisTabActive
+                        : styles.analysisTab
+                    }
+                    onClick={() =>
+                      setAnalysisTab(
+                        tabKey as "report" | "roster" | "participation"
+                      )
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
                 <button
                   type="button"
-                  style={styles.primarySideButton}
+                  style={styles.analysisAddChildButton}
                   onClick={addChildToRoster}
                 >
                   아이 추가
@@ -7333,31 +7350,6 @@ export default function App() {
               </section>
 
               <section style={styles.recordListPanel}>
-                <div style={styles.analysisTabs}>
-                  {[
-                    ["report", "개별 분석"],
-                    ["roster", "반 아이 목록"],
-                    ["participation", "참여 빈도"],
-                  ].map(([tabKey, label]) => (
-                    <button
-                      key={tabKey}
-                      type="button"
-                      style={
-                        analysisTab === tabKey
-                          ? styles.analysisTabActive
-                          : styles.analysisTab
-                      }
-                      onClick={() =>
-                        setAnalysisTab(
-                          tabKey as "report" | "roster" | "participation"
-                        )
-                      }
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
                 {analysisTab === "roster" && (
                 <section style={styles.analysisRosterBox}>
                   <div>
@@ -9160,12 +9152,15 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
     gap: "12px",
+    flex: 1,
     minHeight: 0,
   },
 
   observeLayout: {
     flex: 1,
     padding: "8px 14px",
+    display: "flex",
+    flexDirection: "column",
     minHeight: 0,
     overflow: "hidden",
   },
@@ -9182,6 +9177,7 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
+    minHeight: 0,
   },
 
   featureIcon: {
@@ -9447,7 +9443,7 @@ const styles: Record<string, CSSProperties> = {
     flex: 1,
     padding: "8px 14px",
     display: "grid",
-    gridTemplateColumns: "160px 1fr",
+    gridTemplateColumns: "210px 1fr",
     gap: "8px",
     minHeight: 0,
     overflow: "hidden",
@@ -9459,6 +9455,33 @@ const styles: Record<string, CSSProperties> = {
     alignContent: "start",
     gap: "8px",
     minHeight: 0,
+  },
+
+  recordSideSummary: {
+    background: "#FFFFFF",
+    border: "1px solid #E8E1C8",
+    borderRadius: "14px",
+    padding: "10px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+    minWidth: 0,
+  },
+
+  recordSideDateFilterBox: {
+    background: "#FFFFFF",
+    border: "1px solid #E8E1C8",
+    borderRadius: "14px",
+    padding: "8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "7px",
+  },
+
+  recordSideDateButtons: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "6px",
   },
 
   recordListPanel: {
@@ -9555,12 +9578,20 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: "10px",
   },
 
+  analysisSideTabs: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    alignContent: "start",
+    gap: "8px",
+    minHeight: 0,
+  },
+
   analysisTab: {
     border: "1px solid #E4DABF",
     background: "#FFFFFF",
     color: "#42553A",
-    borderRadius: "999px",
-    padding: "8px 8px",
+    borderRadius: "14px",
+    padding: "12px 10px",
     fontSize: "13px",
     fontWeight: 900,
     cursor: "pointer",
@@ -9571,11 +9602,24 @@ const styles: Record<string, CSSProperties> = {
     border: "2px solid #E3BE3C",
     background: "#FFF4B8",
     color: "#2F4F2F",
-    borderRadius: "999px",
-    padding: "7px 8px",
+    borderRadius: "14px",
+    padding: "11px 10px",
     fontSize: "13px",
     fontWeight: 950,
     cursor: "pointer",
+    wordBreak: "keep-all",
+  },
+
+  analysisAddChildButton: {
+    border: "none",
+    background: "#5F8D4E",
+    color: "#FFFFFF",
+    borderRadius: "14px",
+    padding: "12px 10px",
+    fontSize: "13px",
+    fontWeight: 950,
+    cursor: "pointer",
+    boxShadow: "0 6px 12px rgba(95, 141, 78, 0.2)",
     wordBreak: "keep-all",
   },
 
@@ -10155,6 +10199,7 @@ const styles: Record<string, CSSProperties> = {
   },
 
   recordDateInput: {
+    width: "100%",
     border: "1px solid #D8CFB8",
     borderRadius: "12px",
     padding: "9px 11px",
@@ -10588,6 +10633,30 @@ const styles: Record<string, CSSProperties> = {
     minWidth: 0,
   },
 
+  careSummaryItemFocus: {
+    background: "#FFF6C9",
+    border: "1px solid #E5C66D",
+    borderRadius: "14px",
+    padding: "8px 10px",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: "3px",
+    minWidth: 0,
+  },
+
+  careSummaryItemWater: {
+    background: "#EEF7E7",
+    border: "1px solid #BFD7B3",
+    borderRadius: "14px",
+    padding: "8px 10px",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: "3px",
+    minWidth: 0,
+  },
+
   careSummaryText: {
     color: "#2F4F2F",
     fontSize: "14px",
@@ -10598,8 +10667,8 @@ const styles: Record<string, CSSProperties> = {
 
   resetButton: {
     border: "none",
-    background: "#FFFFFF",
-    color: "#4F6B3F",
+    background: "#F2F7EA",
+    color: "#315E2F",
     borderRadius: "14px",
     padding: "8px 12px",
     fontSize: "12px",
@@ -10638,8 +10707,9 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
     gap: "8px",
+    flex: 1,
     minHeight: 0,
-    alignItems: "start",
+    alignItems: "stretch",
   },
 
   goalControlCompact: {
@@ -10677,7 +10747,7 @@ const styles: Record<string, CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "center",
     minHeight: "0",
   },
 
