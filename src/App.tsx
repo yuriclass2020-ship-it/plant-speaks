@@ -2708,6 +2708,12 @@ export default function App() {
   const latestSoilRecord = getLatestRecord(currentPlantRecords, "soil");
   const latestLeafRecord = getLatestRecord(currentPlantRecords, "leaf");
   const latestPhotoRecord = getLatestRecord(currentPlantRecords, "photo");
+  const todayPlantRecords = currentPlantRecords.filter(
+    (record) => record.dateKey === todayKey || record.date === todayLabel
+  );
+  const todayLeafRecord = getLatestRecord(todayPlantRecords, "leaf");
+  const todaySoilRecord = getLatestRecord(todayPlantRecords, "soil");
+  const todayPhotoRecord = getLatestRecord(todayPlantRecords, "photo");
   const latestAnalyzedPhotoRecord = currentPlantRecords
     .filter(
       (record) =>
@@ -2748,6 +2754,20 @@ export default function App() {
   const latestSoilIcon = latestSoilRecord?.firstIcon || latestSoilRecord?.secondIcon;
   const latestPhotoIcon =
     latestPhotoRecord?.firstIcon || latestPhotoRecord?.secondIcon || "/icons/camera.png";
+  const todayLeafIcon = todayLeafRecord?.secondIcon || todayLeafRecord?.firstIcon;
+  const todaySoilIcon = todaySoilRecord?.firstIcon || todaySoilRecord?.secondIcon;
+  const todayPhotoIcon =
+    todayPhotoRecord?.firstIcon || todayPhotoRecord?.secondIcon || "/icons/camera.png";
+  const todayLeafNeedsCare =
+    todayLeafRecord?.firstValue === "노란색" ||
+    todayLeafRecord?.firstValue === "갈색" ||
+    todayLeafRecord?.secondValue === "축 처졌어요" ||
+    todayLeafRecord?.secondValue === "말랐어요";
+  const todaySoilLooksDry =
+    todaySoilRecord?.firstValue === "많이 말랐어요" ||
+    todaySoilRecord?.firstValue === "조금 말랐어요" ||
+    todaySoilRecord?.firstValue === "마르기 시작했어요" ||
+    todaySoilRecord?.secondValue === "갈라졌어요";
   const leafVisualState = latestLeafRecord
     ? leafNeedsCare
       ? "살펴봐요"
@@ -2760,6 +2780,19 @@ export default function App() {
     : "기록해요";
   const photoVisualState = latestPhotoRecord
     ? latestPhotoRecord.firstValue
+    : "사진 찍기";
+  const todayLeafVisualState = todayLeafRecord
+    ? todayLeafNeedsCare
+      ? "살펴봐요"
+      : "괜찮아요"
+    : "잎 관찰하기";
+  const todaySoilVisualState = todaySoilRecord
+    ? todaySoilLooksDry
+      ? "목말라요"
+      : "괜찮아요"
+    : "흙 관찰하기";
+  const todayPhotoVisualState = todayPhotoRecord
+    ? todayPhotoRecord.firstValue
     : "사진 찍기";
   const recentObservationSpeech = latestRecord
     ? soilLooksDry
@@ -7670,21 +7703,21 @@ export default function App() {
               }}>
                 {[
                   {
-                    icon: latestLeafRecord ? (latestLeafIcon || "/icons/leaf.png") : "/icons/leaf.png",
-                    label: leafVisualState === "기록해요" ? "잎 관찰하기" : leafVisualState,
-                    faded: !latestLeafRecord,
+                    icon: todayLeafRecord ? (todayLeafIcon || "/icons/leaf.png") : "/icons/leaf.png",
+                    label: todayLeafVisualState,
+                    faded: !todayLeafRecord,
                     screen: "leafRecord",
                   },
                   {
-                    icon: latestSoilRecord ? (latestSoilIcon || "/icons/soil.png") : "/icons/soil.png",
-                    label: soilVisualState === "기록해요" ? "흙 관찰하기" : soilVisualState,
-                    faded: !latestSoilRecord,
+                    icon: todaySoilRecord ? (todaySoilIcon || "/icons/soil.png") : "/icons/soil.png",
+                    label: todaySoilVisualState,
+                    faded: !todaySoilRecord,
                     screen: "soilRecord",
                   },
                   {
-                    icon: latestPhotoRecord ? latestPhotoIcon : "/icons/camera.png",
-                    label: photoVisualState,
-                    faded: !latestPhotoRecord,
+                    icon: todayPhotoRecord ? todayPhotoIcon : "/icons/camera.png",
+                    label: todayPhotoVisualState,
+                    faded: !todayPhotoRecord,
                     screen: "photoRecord",
                   },
                 ].map(({ icon, label, faded, screen: sc }) => (
@@ -7694,7 +7727,7 @@ export default function App() {
                     onClick={() => setScreen(sc as typeof screen)}
                     style={{
                       border: "1px solid #E4DABF",
-                      background: "#FFFDF6",
+                      background: faded ? "#F7F3E6" : "#FFFDF6",
                       borderRadius: "16px",
                       padding: "14px 6px",
                       display: "flex",
@@ -7712,13 +7745,13 @@ export default function App() {
                         width: "36px",
                         height: "36px",
                         objectFit: "contain",
-                        opacity: faded ? 0.3 : 1,
+                        opacity: faded ? 0.45 : 1,
                       }}
                     />
                     <span style={{
                       fontSize: "13px",
                       fontWeight: 900,
-                      color: "#2F4F2F",
+                      color: faded ? "#6B7F5A" : "#2F4F2F",
                       textAlign: "center",
                     }}>
                       {label}
