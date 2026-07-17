@@ -5203,16 +5203,24 @@ export default function App() {
     );
   };
 
-  const renderTopBar = (title: string, desc: string) => {
+  const renderTopBar = (
+    title: string,
+    desc: string,
+    options?: { icon?: string; hideDesc?: boolean }
+  ) => {
     return (
       <>
         <header style={styles.topBar}>
           <div style={styles.topBarLeft}>
-            <img src={mainImagePath} alt="식물" style={styles.topBarIcon} />
+            <img
+              src={options?.icon || mainImagePath}
+              alt={title}
+              style={styles.topBarIcon}
+            />
 
             <div>
               <h1 style={styles.topBarTitle}>{title}</h1>
-              <p style={styles.topBarDesc}>{desc}</p>
+              {!options?.hideDesc && <p style={styles.topBarDesc}>{desc}</p>}
             </div>
           </div>
 
@@ -6751,23 +6759,12 @@ export default function App() {
       <div style={styles.page}>
         <div style={styles.landscapeFrame}>
           <div style={styles.screenContent}>
-            {renderTopBar("관찰", "식물의 모습을 자세히 살펴봐요")}
+            {renderTopBar("관찰", "식물의 모습을 자세히 살펴봐요", {
+              icon: "/icons/observe.png",
+              hideDesc: true,
+            })}
 
-            <main style={styles.tabMainLayout}>
-              <section style={styles.sideInfoCard}>
-                <img
-                  src="/icons/observe.png"
-                  alt="관찰"
-                  style={styles.sideInfoIcon}
-                />
-
-                <h2 style={styles.sideInfoTitle}>오늘은 무엇을 볼까요?</h2>
-
-                <p style={styles.sideInfoText}>
-                  사진, 잎, 흙을 차례대로 살펴보면 식물의 변화를 더 잘 알 수 있어요.
-                </p>
-              </section>
-
+            <main style={styles.observeLayout}>
               <section style={styles.horizontalCardGrid}>
                 {observeCards.map((card) => (
                   <button
@@ -6801,43 +6798,35 @@ export default function App() {
           {renderMotionStyles()}
 
           <div style={styles.screenContent}>
-            {renderTopBar("돌보기", "물 주기와 햇빛 보기를 횟수로 세요")}
+            {renderTopBar("돌보기", "물 주기와 햇빛 보기를 횟수로 세요", {
+              icon: "/icons/care.png",
+              hideDesc: true,
+            })}
 
             <main style={styles.careLayout}>
-              <section style={styles.sideInfoCard}>
-                <img src="/icons/care.png" alt="돌보기" style={styles.sideInfoIcon} />
-
-                <h2 style={styles.sideInfoTitle}>오늘의 돌보기</h2>
-
-                <p style={styles.careSpeechText}>
-                  {plantWaterSpeech}
-                </p>
-
-                <div style={styles.careSimpleCheck}>
+              <section style={styles.careTopSummary}>
+                <div style={styles.careSummaryItem}>
                   <span style={styles.careSimpleCheckLabel}>오늘 볼 것</span>
-                  <strong style={styles.careSimpleCheckText}>{careFocusText}</strong>
+                  <strong style={styles.careSummaryText}>{careFocusText}</strong>
                 </div>
 
-                <div style={styles.waterReminderBox}>
+                <div style={styles.careSummaryItem}>
                   <span style={styles.waterReminderLabel}>다음 물 주기</span>
-                  <strong style={styles.waterReminderText}>{nextWateringText}</strong>
-
-                  <div style={styles.goalControl}>
+                  <strong style={styles.careSummaryText}>{nextWateringText}</strong>
+                  <div style={styles.goalControlCompact}>
                     <button
                       type="button"
-                      style={styles.goalButton}
+                      style={styles.goalButtonSmall}
                       onClick={decreaseWaterInterval}
                     >
                       -
                     </button>
-
-                    <span style={styles.goalText}>
+                    <span style={styles.goalTextCompact}>
                       {careState.waterIntervalDays}일마다
                     </span>
-
                     <button
                       type="button"
-                      style={styles.goalButton}
+                      style={styles.goalButtonSmall}
                       onClick={increaseWaterInterval}
                     >
                       +
@@ -6993,17 +6982,36 @@ export default function App() {
           {renderMotionStyles()}
 
           <div style={styles.screenContent}>
-            {renderTopBar("기록", "관찰한 내용을 모아봐요")}
+            {renderTopBar("기록", "관찰한 내용을 모아봐요", {
+              icon: "/icons/record.png",
+              hideDesc: true,
+            })}
 
             <main style={styles.recordLayout}>
-              <section style={styles.sideInfoCard}>
-                <img src="/icons/record.png" alt="기록" style={styles.sideInfoIcon} />
-
-                <h2 style={styles.sideInfoTitle}>기록 모음</h2>
-
-                <p style={styles.sideInfoText}>
-                  오늘 기록과 지난 기록을 사진, 잎, 흙, 기타로 나누어 볼 수 있어요.
-                </p>
+              <section style={styles.recordSideTabs}>
+                {[
+                  ["records", "흙·잎·사진"],
+                  ["weekly", "이번 주 변화"],
+                  ["photos", "사진 비교"],
+                  ["attention", "주의 기록"],
+                ].map(([tabKey, label]) => (
+                  <button
+                    key={tabKey}
+                    type="button"
+                    style={
+                      recordSummaryTab === tabKey
+                        ? styles.recordSummaryTabActive
+                        : styles.recordSummaryTab
+                    }
+                    onClick={() =>
+                      setRecordSummaryTab(
+                        tabKey as "records" | "weekly" | "photos" | "attention"
+                      )
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
               </section>
 
               <section style={styles.recordListPanel}>
@@ -7034,32 +7042,6 @@ export default function App() {
                     {photoAnalysisNotice}
                   </div>
                 )}
-
-                <div style={styles.recordSummaryTabs}>
-                  {[
-                    ["records", "흙·잎·사진"],
-                    ["weekly", "이번 주 변화"],
-                    ["photos", "사진 비교"],
-                    ["attention", "주의 기록"],
-                  ].map(([tabKey, label]) => (
-                    <button
-                      key={tabKey}
-                      type="button"
-                      style={
-                        recordSummaryTab === tabKey
-                          ? styles.recordSummaryTabActive
-                          : styles.recordSummaryTab
-                      }
-                      onClick={() =>
-                        setRecordSummaryTab(
-                          tabKey as "records" | "weekly" | "photos" | "attention"
-                        )
-                      }
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
 
                 {recordSummaryTab === "weekly" && (
                 <section style={styles.weeklySummaryBox}>
@@ -9178,6 +9160,14 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
     gap: "12px",
+    minHeight: 0,
+  },
+
+  observeLayout: {
+    flex: 1,
+    padding: "8px 14px",
+    minHeight: 0,
+    overflow: "hidden",
   },
 
   largeFeatureCard: {
@@ -9457,10 +9447,18 @@ const styles: Record<string, CSSProperties> = {
     flex: 1,
     padding: "8px 14px",
     display: "grid",
-    gridTemplateColumns: "150px 1fr",
+    gridTemplateColumns: "160px 1fr",
     gap: "8px",
     minHeight: 0,
     overflow: "hidden",
+  },
+
+  recordSideTabs: {
+    display: "grid",
+    gridTemplateColumns: "1fr",
+    alignContent: "start",
+    gap: "8px",
+    minHeight: 0,
   },
 
   recordListPanel: {
@@ -9493,9 +9491,9 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid #E4DABF",
     background: "#FFFFFF",
     color: "#42553A",
-    borderRadius: "999px",
-    padding: "7px 8px",
-    fontSize: "12px",
+    borderRadius: "14px",
+    padding: "12px 10px",
+    fontSize: "13px",
     fontWeight: 900,
     cursor: "pointer",
     wordBreak: "keep-all",
@@ -9505,9 +9503,9 @@ const styles: Record<string, CSSProperties> = {
     border: "2px solid #E3BE3C",
     background: "#FFF4B8",
     color: "#2F4F2F",
-    borderRadius: "999px",
-    padding: "6px 8px",
-    fontSize: "12px",
+    borderRadius: "14px",
+    padding: "11px 10px",
+    fontSize: "13px",
     fontWeight: 950,
     cursor: "pointer",
     wordBreak: "keep-all",
@@ -10563,22 +10561,48 @@ const styles: Record<string, CSSProperties> = {
 
   careLayout: {
     flex: 1,
-    padding: "10px 16px",
-    display: "grid",
-    gridTemplateColumns: "150px 1fr",
+    padding: "8px 14px",
+    display: "flex",
+    flexDirection: "column",
     gap: "8px",
     minHeight: 0,
     overflowY: "auto",
   },
 
+  careTopSummary: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1.2fr auto",
+    gap: "8px",
+    alignItems: "stretch",
+  },
+
+  careSummaryItem: {
+    background: "#FFFDF6",
+    border: "1px solid #E4DABF",
+    borderRadius: "14px",
+    padding: "8px 10px",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: "3px",
+    minWidth: 0,
+  },
+
+  careSummaryText: {
+    color: "#2F4F2F",
+    fontSize: "14px",
+    fontWeight: 950,
+    lineHeight: 1.25,
+    wordBreak: "keep-all",
+  },
+
   resetButton: {
-    marginTop: "8px",
     border: "none",
     background: "#FFFFFF",
     color: "#4F6B3F",
-    borderRadius: "999px",
-    padding: "7px 10px",
-    fontSize: "11px",
+    borderRadius: "14px",
+    padding: "8px 12px",
+    fontSize: "12px",
     fontWeight: 900,
     cursor: "pointer",
     boxShadow: "0 4px 10px rgba(80, 80, 60, 0.06)",
@@ -10613,9 +10637,35 @@ const styles: Record<string, CSSProperties> = {
   careCardRow: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
-    gap: "10px",
+    gap: "8px",
     minHeight: 0,
     alignItems: "start",
+  },
+
+  goalControlCompact: {
+    display: "flex",
+    alignItems: "center",
+    gap: "5px",
+    marginTop: "2px",
+  },
+
+  goalButtonSmall: {
+    width: "24px",
+    height: "24px",
+    border: "none",
+    borderRadius: "50%",
+    background: "#E7F0DD",
+    color: "#3F6B34",
+    fontSize: "15px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  goalTextCompact: {
+    color: "#4F6B3F",
+    fontSize: "12px",
+    fontWeight: 900,
+    whiteSpace: "nowrap",
   },
 
   careCard: {
