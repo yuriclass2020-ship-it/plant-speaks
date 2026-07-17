@@ -1995,7 +1995,6 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("start");
   const [message, setMessage] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [showChatHistory, setShowChatHistory] = useState(false);
   const [aiChatCache, setAiChatCache] = useState<Record<string, string>>({});
   const [aiChatUsage, setAiChatUsage] = useState<AiChatUsage>({
     dateKey: "",
@@ -2636,11 +2635,6 @@ export default function App() {
   );
   const activeChildMessages = chatMessages.filter(
     (message) => (message.childName || "아이 미지정") === activeChildName
-  );
-  const visibleChatMessages = showChatHistory ? chatMessages : chatMessages.slice(-1);
-  const hiddenChatMessageCount = Math.max(
-    0,
-    chatMessages.length - visibleChatMessages.length
   );
   const childCurriculumReport = buildChildCurriculumReport(
     activeChildName,
@@ -6549,19 +6543,7 @@ export default function App() {
                     </button>
                   </div>
 
-                  {chatMessages.length > 1 && (
-                    <button
-                      type="button"
-                      style={styles.chatHistoryNotice}
-                      onClick={() => setShowChatHistory((prev) => !prev)}
-                    >
-                      {showChatHistory
-                        ? "이전 대화 접기"
-                        : `이전 대화 ${hiddenChatMessageCount}개 보기`}
-                    </button>
-                  )}
-
-                  {visibleChatMessages.map((chatMessage) => (
+                  {chatMessages.map((chatMessage) => (
                     <div key={chatMessage.id} style={styles.chatTurn}>
                       <div style={styles.questionBubble}>
                         <span style={styles.chatBubbleLabel}>질문</span>
@@ -10851,9 +10833,9 @@ const styles: Record<string, CSSProperties> = {
     overflowY: "auto",
     display: "flex",
     flexDirection: "column",
-    justifyContent: "flex-end",
     gap: "6px",
-    paddingRight: 0,
+    paddingRight: "4px",
+    paddingBottom: "4px",
   },
 
   chatScrollAnchor: {
@@ -10883,19 +10865,6 @@ const styles: Record<string, CSSProperties> = {
     border: "1px solid #E8E1C8",
     borderRadius: "16px",
     padding: "8px",
-  },
-
-  chatHistoryNotice: {
-    alignSelf: "center",
-    background: "#F3EEDC",
-    color: "#6B7F5A",
-    border: "1px solid #E4DABF",
-    borderRadius: "999px",
-    padding: "5px 10px",
-    fontSize: "12px",
-    fontWeight: 900,
-    lineHeight: 1.2,
-    cursor: "pointer",
   },
 
   chatBubbleLabel: {
