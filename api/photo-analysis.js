@@ -1,6 +1,54 @@
 import OpenAI from 'openai';
 
 const DEFAULT_MODEL = 'gpt-5-mini';
+const PHOTO_ANALYSIS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    isPlantPhoto: { type: 'boolean' },
+    visibleDetails: { type: 'string' },
+    uncertainDetails: { type: 'string' },
+    summary: { type: 'string' },
+    leafHint: { type: 'string' },
+    soilHint: { type: 'string' },
+    action: { type: 'string' },
+    suggestedPlantType: { type: 'string' },
+    identificationConfidence: {
+      type: 'string',
+      enum: ['high', 'medium', 'low'],
+    },
+    photoQuality: {
+      type: 'string',
+      enum: ['good', 'usable', 'poor'],
+    },
+    visibleFeatures: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    condition: {
+      type: 'string',
+      enum: ['healthy', 'observe', 'unclear'],
+    },
+    comparison: { type: 'string' },
+    dialogueContext: { type: 'string' },
+  },
+  required: [
+    'isPlantPhoto',
+    'visibleDetails',
+    'uncertainDetails',
+    'summary',
+    'leafHint',
+    'soilHint',
+    'action',
+    'suggestedPlantType',
+    'identificationConfidence',
+    'photoQuality',
+    'visibleFeatures',
+    'condition',
+    'comparison',
+    'dialogueContext',
+  ],
+};
 
 function getOpenAiApiKey(req) {
   const headerKey = req.headers['x-openai-api-key'];
@@ -137,7 +185,7 @@ suggestedPlantType, identificationConfidence, photoQuality, visibleFeatures,
 condition, comparison, dialogueContext`;
 }
 
-function parseJson(text) {
+export function parsePhotoAnalysisJson(text) {
   if (!text || typeof text !== 'string') return null;
   try {
     return JSON.parse(text);
@@ -151,6 +199,27 @@ function parseJson(text) {
       return null;
     }
   }
+}
+
+export function getPhotoAnalysisResponseText(response) {
+  if (typeof response?.output_text === 'string' && response.output_text.trim()) {
+    return response.output_text.trim();
+  }
+
+  if (!Array.isArray(response?.output)) return '';
+
+  return response.output
+    .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+    .map((item) => {
+      if (typeof item?.text === 'string') return item.text;
+      if (item?.json && typeof item.json === 'object') {
+        return JSON.stringify(item.json);
+      }
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
 }
 
 export default async function handler(req, res) {
@@ -241,15 +310,35 @@ export default async function handler(req, res) {
       input: [{ role: 'user', content }],
       text: {
         format: {
-          type: 'json_object',
+          type: 'json_schema',
+          name: 'plant_photo_analysis',
+          description:
+            '사진에서 직접 확인되는 식물 특징과 관찰 안내를 담은 분석 결과',
+          strict: true,
+          schema: PHOTO_ANALYSIS_SCHEMA,
         },
       },
-      max_output_tokens: 1200,
+      reasoning: {
+        effort: 'low',
+      },
+      max_output_tokens: 2400,
     });
 
-    const parsed = parseJson(response.output_text);
+    const responseText = getPhotoAnalysisResponseText(response);
+    const parsed = parsePhotoAnalysisJson(responseText);
     if (!parsed) {
-      throw new Error('사진 분석 결과 형식을 확인하지 못했어요.');
+      const incompleteReason = response?.incomplete_details?.reason;
+      if (response?.status === 'incomplete') {
+        throw new Error(
+          incompleteReason === 'max_output_tokens'
+            ? '사진 분석 응답이 길어 완료되지 않았어요. 다시 분석해 주세요.'
+            : '사진 분석이 완료되지 않았어요. 잠시 후 다시 눌러 주세요.'
+        );
+      }
+
+      throw new Error(
+        '사진 분석 응답을 읽지 못했어요. 잠시 후 다시 눌러 주세요.'
+      );
     }
 
     return res.json({
