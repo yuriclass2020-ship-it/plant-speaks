@@ -2542,9 +2542,12 @@ export default function App() {
   useEffect(() => {
     if (!isStateLoaded) return;
 
-    chatMessages.slice(-3).forEach((chatMessage) => {
-      preloadSpeechText(chatMessage.answer, chatMessage.id);
-    });
+    chatMessages
+      .filter((chatMessage) => chatMessage.answer.trim())
+      .slice(-3)
+      .forEach((chatMessage) => {
+        preloadSpeechText(chatMessage.answer, chatMessage.id);
+      });
   }, [chatMessages, isStateLoaded]);
 
   useEffect(() => {
@@ -2636,12 +2639,16 @@ export default function App() {
 
     localStorage.setItem(CARE_STORAGE_KEY, JSON.stringify(careState));
     localStorage.setItem(RECORD_STORAGE_KEY, JSON.stringify(records));
-    const savedChatMessages = trimChatMessages(chatMessages);
+    const trimmedChatMessages = trimChatMessages(chatMessages);
 
-    if (savedChatMessages.length !== chatMessages.length) {
-      setChatMessages(savedChatMessages);
+    if (trimmedChatMessages.length !== chatMessages.length) {
+      setChatMessages(trimmedChatMessages);
       return;
     }
+
+    const savedChatMessages = trimmedChatMessages.filter((chatMessage) =>
+      chatMessage.answer.trim()
+    );
 
     localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(savedChatMessages));
     localStorage.setItem(
@@ -2694,6 +2701,9 @@ export default function App() {
   );
   const activeChildMessages = chatMessages.filter(
     (message) => (message.childName || "아이 미지정") === activeChildName
+  );
+  const hasPendingChatAnswer = chatMessages.some(
+    (message) => !message.answer.trim()
   );
   const childCurriculumReport = buildChildCurriculumReport(
     activeChildName,
@@ -4968,7 +4978,7 @@ export default function App() {
           id: messageId,
           childName: activeChildName,
           question,
-          answer,
+          answer: shouldAskAi ? "" : answer,
         },
       ])
     );
@@ -7128,31 +7138,51 @@ export default function App() {
                         {chatMessage.question}
                       </div>
 
-                      <div style={styles.answerBubble}>
-                        <div>
-                          <span style={styles.answerBubbleLabel}>
-                            {plantDisplayName} 답변
-                          </span>
-                          {chatMessage.answer}
-                        </div>
-                        <div style={styles.answerActions}>
-                          <button
-                            type="button"
-                            style={styles.readButton}
-                            disabled={Boolean(loadingAudioId)}
-                            onClick={() =>
-                              readingMessageId === chatMessage.id
-                                ? stopSpeaking()
-                                : speakText(chatMessage.answer, chatMessage.id)
-                            }
-                          >
-                            {readingMessageId === chatMessage.id
-                              ? "멈추기"
-                              : loadingAudioId === chatMessage.id
-                                ? "준비 중"
-                              : "읽어주기"}
-                          </button>
-                        </div>
+                      <div
+                        style={{
+                          ...styles.answerBubble,
+                          ...(!chatMessage.answer
+                            ? styles.pendingAnswerBubble
+                            : {}),
+                        }}
+                        aria-live="polite"
+                      >
+                        {chatMessage.answer ? (
+                          <>
+                            <div>
+                              <span style={styles.answerBubbleLabel}>
+                                {plantDisplayName} 답변
+                              </span>
+                              {chatMessage.answer}
+                            </div>
+                            <div style={styles.answerActions}>
+                              <button
+                                type="button"
+                                style={styles.readButton}
+                                disabled={Boolean(loadingAudioId)}
+                                onClick={() =>
+                                  readingMessageId === chatMessage.id
+                                    ? stopSpeaking()
+                                    : speakText(
+                                        chatMessage.answer,
+                                        chatMessage.id
+                                      )
+                                }
+                              >
+                                {readingMessageId === chatMessage.id
+                                  ? "멈추기"
+                                  : loadingAudioId === chatMessage.id
+                                    ? "준비 중"
+                                    : "읽어주기"}
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <div role="status" style={styles.chatThinkingText}>
+                            {plantDisplayName}가 답을 생각하고 있어요
+                            <span style={styles.chatThinkingDots}>...</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -7168,7 +7198,13 @@ export default function App() {
                         <button
                           key={quickQuestion}
                           type="button"
-                          style={styles.quickQuestionButton}
+                          style={{
+                            ...styles.quickQuestionButton,
+                            ...(hasPendingChatAnswer
+                              ? styles.disabledChatControl
+                              : {}),
+                          }}
+                          disabled={hasPendingChatAnswer}
                           onClick={() => {
                             setMessage(quickQuestion);
                             void handleSendMessage(quickQuestion);
@@ -7204,12 +7240,24 @@ export default function App() {
                         }
                       }}
                       placeholder="식물에게 물어보세요..."
-                      style={styles.input}
+                      style={{
+                        ...styles.input,
+                        ...(hasPendingChatAnswer
+                          ? styles.disabledChatControl
+                          : {}),
+                      }}
+                      disabled={hasPendingChatAnswer}
                     />
 
                     <button
                       type="button"
-                      style={styles.voiceButton}
+                      style={{
+                        ...styles.voiceButton,
+                        ...(hasPendingChatAnswer
+                          ? styles.disabledChatControl
+                          : {}),
+                      }}
+                      disabled={hasPendingChatAnswer}
                       onClick={
                         isListening ? stopVoiceQuestion : startVoiceQuestion
                       }
@@ -7219,7 +7267,13 @@ export default function App() {
 
                     <button
                       type="submit"
-                      style={styles.sendButton}
+                      style={{
+                        ...styles.sendButton,
+                        ...(hasPendingChatAnswer
+                          ? styles.disabledChatControl
+                          : {}),
+                      }}
+                      disabled={hasPendingChatAnswer}
                       onPointerDown={(event) => {
                         event.preventDefault();
                         void handleSendMessage(
@@ -12232,6 +12286,27 @@ const styles: Record<string, CSSProperties> = {
     wordBreak: "keep-all",
   },
 
+  pendingAnswerBubble: {
+    background: "#F4F7EF",
+    borderColor: "#DCE8D2",
+    color: "#64755A",
+  },
+
+  chatThinkingText: {
+    minHeight: "24px",
+    display: "flex",
+    alignItems: "center",
+    gap: "3px",
+    fontSize: "13px",
+    fontWeight: 850,
+  },
+
+  chatThinkingDots: {
+    display: "inline-block",
+    minWidth: "18px",
+    color: "#5F8D4E",
+  },
+
   answerActions: {
     display: "flex",
     justifyContent: "flex-start",
@@ -12466,6 +12541,11 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 900,
     cursor: "pointer",
     flexShrink: 0,
+  },
+
+  disabledChatControl: {
+    opacity: 0.5,
+    cursor: "default",
   },
 
   voiceButton: {
