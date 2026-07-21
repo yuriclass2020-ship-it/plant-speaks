@@ -2435,6 +2435,7 @@ export default function App() {
   );
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const installPromptRef = useRef<BeforeInstallPromptEvent | null>(null);
   const chatMessageListRef = useRef<HTMLDivElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
@@ -2990,15 +2991,21 @@ export default function App() {
   useEffect(() => {
     const standaloneQuery = window.matchMedia("(display-mode: standalone)");
 
-    setIsAppInstalled(standaloneQuery.matches);
+    const isIosStandalone = Boolean(
+      (navigator as Navigator & { standalone?: boolean }).standalone
+    );
+    setIsAppInstalled(standaloneQuery.matches || isIosStandalone);
 
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
+      const promptEvent = event as BeforeInstallPromptEvent;
+      installPromptRef.current = promptEvent;
+      setInstallPrompt(promptEvent);
     };
 
     const handleAppInstalled = () => {
       setInstallPrompt(null);
+      installPromptRef.current = null;
       setIsAppInstalled(true);
     };
 
@@ -6388,21 +6395,38 @@ export default function App() {
       return;
     }
 
-    if (!installPrompt) {
+    let promptEvent = installPromptRef.current || installPrompt;
+
+    if (!promptEvent && "serviceWorker" in navigator) {
+      try {
+        await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        await navigator.serviceWorker.ready;
+        await new Promise((resolve) => window.setTimeout(resolve, 900));
+        promptEvent = installPromptRef.current;
+      } catch {
+        // The browser-specific instructions below remain available.
+      }
+    }
+
+    if (!promptEvent) {
+      const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
       alert(
-        "설치 준비가 아직 안 됐어요. 페이지를 새로고침한 뒤 주소창 오른쪽의 설치 아이콘이나 브라우저 메뉴의 '앱 설치'를 눌러 주세요."
+        isIos
+          ? "아이폰·아이패드에서는 Safari의 공유 버튼을 누른 뒤 '홈 화면에 추가'를 선택해 주세요."
+          : "Chrome 주소창 오른쪽의 설치 아이콘을 눌러 주세요. 아이콘이 없으면 페이지를 한 번 새로고침한 뒤 Chrome 메뉴의 '전송, 저장, 공유 > 페이지를 앱으로 설치'를 선택해 주세요."
       );
       return;
     }
 
-    await installPrompt.prompt();
-    const choice = await installPrompt.userChoice;
+    await promptEvent.prompt();
+    const choice = await promptEvent.userChoice;
 
     if (choice.outcome === "accepted") {
       setIsAppInstalled(true);
     }
 
     setInstallPrompt(null);
+    installPromptRef.current = null;
   };
 
   const renderBottomNav = () => {

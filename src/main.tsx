@@ -8,34 +8,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>
 );
 
-function clearServiceWorkersAndCaches() {
-  navigator.serviceWorker
-    .getRegistrations()
-    .then((registrations) => {
-      registrations.forEach((registration) => {
-        registration.unregister();
-      });
-    })
-    .catch(() => {
-      // Cleanup is best-effort.
-    });
-
-  if ('caches' in window) {
-    caches
-      .keys()
-      .then((keys) => {
-        keys.forEach((key) => {
-          caches.delete(key);
-        });
-      })
-      .catch(() => {
-        // Cache cleanup is best-effort.
-      });
-  }
-}
-
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    clearServiceWorkersAndCaches();
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((error) => {
+      console.error('서비스 워커 등록 실패:', error);
+    });
   });
 }

@@ -1,6 +1,7 @@
 {
   "name": "식물talk",
   "short_name": "식물talk",
+  "id": "/",
   "description": "아이들이 식물을 관찰하고 대화하듯 기록하는 앱",
   "start_url": "/",
   "scope": "/",
@@ -9,6 +10,8 @@
   "background_color": "#F8F5EA",
   "theme_color": "#5F8D4E",
   "lang": "ko-KR",
+  "categories": ["education", "kids"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icons/pwa-icon-192.png",
