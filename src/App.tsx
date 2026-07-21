@@ -197,6 +197,7 @@ const TEST_ACCESS_CODE_STORAGE_KEY = "plant-speaks-test-access-code-v1";
 const AI_CHAT_CACHE_STORAGE_KEY = "plant-speaks-ai-chat-cache-v3";
 const AI_CHAT_USAGE_STORAGE_KEY = "plant-speaks-ai-chat-usage-v1";
 const AI_FEATURE_USAGE_STORAGE_KEY = "plant-speaks-ai-feature-usage-v1";
+const AI_USAGE_BY_KEY_STORAGE_KEY = "plant-speaks-ai-usage-by-key-v1";
 const PHOTO_ANALYSIS_CACHE_STORAGE_KEY =
   "plant-speaks-photo-analysis-cache-v1";
 const MAX_CHAT_MESSAGES = 80;
@@ -205,6 +206,7 @@ const MAX_PHOTO_ANALYSIS_CACHE_ENTRIES = 16;
 const DAILY_AI_CHAT_LIMIT = 30;
 const DAILY_AI_PHOTO_LIMIT = 12;
 const DAILY_AI_DRAFT_LIMIT = 8;
+const DAILY_AI_TTS_LIMIT = 30;
 const AUTO_BACKUP_DATABASE_NAME = "plant-speaks-auto-backup-v1";
 const AUTO_BACKUP_STORE_NAME = "snapshots";
 const MAX_AUTO_BACKUPS = 3;
@@ -290,6 +292,17 @@ type AiFeatureUsage = {
   photoCount: number;
   draftCount: number;
   cacheHits: number;
+};
+
+type AiTtsUsage = {
+  dateKey: string;
+  count: number;
+};
+
+type AiUsageProfile = {
+  chat: AiChatUsage;
+  features: AiFeatureUsage;
+  tts: AiTtsUsage;
 };
 
 type PreparedImage = {
@@ -2059,6 +2072,78 @@ function normalizeAiFeatureUsage(
   };
 }
 
+function normalizeAiTtsUsage(
+  usage: Partial<AiTtsUsage> | undefined,
+  dateKey: string
+): AiTtsUsage {
+  if (usage?.dateKey !== dateKey) {
+    return { dateKey, count: 0 };
+  }
+
+  return {
+    dateKey,
+    count: Math.max(0, Number(usage.count) || 0),
+  };
+}
+
+function createAiUsageProfileId(apiKey: string) {
+  const normalizedKey = apiKey.trim();
+  if (!normalizedKey) return "no-key";
+
+  let hash = 2166136261;
+  for (let index = 0; index < normalizedKey.length; index += 1) {
+    hash ^= normalizedKey.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return `key-${(hash >>> 0).toString(36)}`;
+}
+
+function loadAiUsageProfile(apiKey: string, dateKey: string) {
+  try {
+    const savedProfiles = JSON.parse(
+      localStorage.getItem(AI_USAGE_BY_KEY_STORAGE_KEY) || "{}"
+    ) as Record<string, Partial<AiUsageProfile>>;
+    const savedProfile = savedProfiles[createAiUsageProfileId(apiKey)];
+    if (!savedProfile) return null;
+
+    return {
+      chat: normalizeAiChatUsage(savedProfile.chat, dateKey),
+      features: normalizeAiFeatureUsage(savedProfile.features, dateKey),
+      tts: normalizeAiTtsUsage(savedProfile.tts, dateKey),
+    } satisfies AiUsageProfile;
+  } catch {
+    return null;
+  }
+}
+
+function saveAiUsageProfile(
+  apiKey: string,
+  profile: AiUsageProfile
+) {
+  try {
+    const savedProfiles = JSON.parse(
+      localStorage.getItem(AI_USAGE_BY_KEY_STORAGE_KEY) || "{}"
+    ) as Record<string, AiUsageProfile>;
+    const entries = Object.entries({
+      ...savedProfiles,
+      [createAiUsageProfileId(apiKey)]: profile,
+    }).slice(-12);
+
+    localStorage.setItem(
+      AI_USAGE_BY_KEY_STORAGE_KEY,
+      JSON.stringify(Object.fromEntries(entries))
+    );
+  } catch {
+    localStorage.setItem(
+      AI_USAGE_BY_KEY_STORAGE_KEY,
+      JSON.stringify({
+        [createAiUsageProfileId(apiKey)]: profile,
+      })
+    );
+  }
+}
+
 function trimPhotoAnalysisCache(cache: Record<string, PhotoAnalysis>) {
   return Object.fromEntries(
     Object.entries(cache).slice(-MAX_PHOTO_ANALYSIS_CACHE_ENTRIES)
@@ -2315,10 +2400,15 @@ export default function App() {
     draftCount: 0,
     cacheHits: 0,
   });
+  const [aiTtsUsage, setAiTtsUsage] = useState<AiTtsUsage>({
+    dateKey: "",
+    count: 0,
+  });
   const [photoAnalysisCache, setPhotoAnalysisCache] = useState<
     Record<string, PhotoAnalysis>
   >({});
   const [openAiApiKey, setOpenAiApiKey] = useState("");
+  const [openAiApiKeyDraft, setOpenAiApiKeyDraft] = useState("");
   const [openAiApiKeyError, setOpenAiApiKeyError] = useState("");
   const [showOpenAiKeyPanel, setShowOpenAiKeyPanel] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -2353,7 +2443,6 @@ export default function App() {
   const autoBackupSignatureRef = useRef("");
   const activeAudioIdRef = useRef("");
   const audioUrlCacheRef = useRef<Record<string, string>>({});
-  const audioPreloadRef = useRef<Set<string>>(new Set());
   const waterPromptSoundDateRef = useRef("");
 
   const [plant, setPlant] = useState<Plant | null>(null);
@@ -2513,6 +2602,7 @@ export default function App() {
       draftCount: 0,
       cacheHits: 0,
     };
+    let localAiTtsUsage: AiTtsUsage = { dateKey: todayKey, count: 0 };
     let localPhotoAnalysisCache: Record<string, PhotoAnalysis> = {};
     let localOpenAiApiKey = "";
 
@@ -2641,6 +2731,16 @@ export default function App() {
     const savedOpenAiApiKey = localStorage.getItem(OPENAI_API_KEY_STORAGE_KEY);
     if (savedOpenAiApiKey) {
       localOpenAiApiKey = savedOpenAiApiKey;
+    }
+
+    const savedUsageProfile = loadAiUsageProfile(
+      localOpenAiApiKey,
+      todayKey
+    );
+    if (savedUsageProfile) {
+      localAiChatUsage = savedUsageProfile.chat;
+      localAiFeatureUsage = savedUsageProfile.features;
+      localAiTtsUsage = savedUsageProfile.tts;
     }
 
     async function loadInitialState() {
@@ -2773,8 +2873,10 @@ export default function App() {
       setAiChatCache(localAiChatCache);
       setAiChatUsage(localAiChatUsage);
       setAiFeatureUsage(localAiFeatureUsage);
+      setAiTtsUsage(localAiTtsUsage);
       setPhotoAnalysisCache(localPhotoAnalysisCache);
       setOpenAiApiKey(localOpenAiApiKey);
+      setOpenAiApiKeyDraft(localOpenAiApiKey);
       setIsStateLoaded(true);
 
       try {
@@ -2886,42 +2988,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isStateLoaded) return;
-
-    Object.entries(CARE_REACTION_SPEECH).forEach(([key, text]) => {
-      preloadSpeechText(text, `care-reaction-${key}`);
-    });
-  }, [isStateLoaded]);
-
-  useEffect(() => {
-    if (!isStateLoaded) return;
-
-    chatMessages
-      .filter((chatMessage) => chatMessage.answer.trim())
-      .slice(-3)
-      .forEach((chatMessage) => {
-        preloadSpeechText(chatMessage.answer, chatMessage.id);
-      });
-  }, [chatMessages, isStateLoaded]);
-
-  useEffect(() => {
-    if (!isStateLoaded) return;
-
-    records
-      .filter(
-        (record) =>
-          record.type === "photo" && record.imageData && record.photoAnalysis
-      )
-      .slice(-3)
-      .forEach((record) => {
-      preloadSpeechText(
-          getPhotoAnalysisChildText(record.photoAnalysis),
-          `photo-child-${record.id}`
-        );
-      });
-  }, [isStateLoaded, records]);
-
-  useEffect(() => {
     const standaloneQuery = window.matchMedia("(display-mode: standalone)");
 
     setIsAppInstalled(standaloneQuery.matches);
@@ -2965,6 +3031,7 @@ export default function App() {
 
     setAiChatUsage((prev) => normalizeAiChatUsage(prev, todayKey));
     setAiFeatureUsage((prev) => normalizeAiFeatureUsage(prev, todayKey));
+    setAiTtsUsage((prev) => normalizeAiTtsUsage(prev, todayKey));
   }, [isStateLoaded, todayKey]);
 
   const knownChildNames = getUniqueChildNames([
@@ -3015,6 +3082,11 @@ export default function App() {
       AI_FEATURE_USAGE_STORAGE_KEY,
       JSON.stringify(aiFeatureUsage)
     );
+    saveAiUsageProfile(openAiApiKey, {
+      chat: normalizeAiChatUsage(aiChatUsage, todayKey),
+      features: normalizeAiFeatureUsage(aiFeatureUsage, todayKey),
+      tts: normalizeAiTtsUsage(aiTtsUsage, todayKey),
+    });
     localStorage.setItem(
       PHOTO_ANALYSIS_CACHE_STORAGE_KEY,
       JSON.stringify(trimPhotoAnalysisCache(photoAnalysisCache))
@@ -3041,9 +3113,11 @@ export default function App() {
     aiChatCache,
     aiChatUsage,
     aiFeatureUsage,
+    aiTtsUsage,
     isStateLoaded,
     knownChildNameSignature,
     photoAnalysisCache,
+    openAiApiKey,
     plant,
     records,
   ]);
@@ -3630,12 +3704,6 @@ export default function App() {
     : `${nextWaterDaysLeft}일 뒤 물 주기`;
   const plantNeedsAttention =
     waterNeedsCare || recordNeedsAttention || daysSinceLastRecord >= 3;
-
-  useEffect(() => {
-    if (!isStateLoaded) return;
-
-    preloadSpeechText(plantStatusSpeech, "plant-status");
-  }, [isStateLoaded, plantStatusSpeech]);
 
   const draftStatusStyle =
     draftStatus.tone === "success"
@@ -5868,30 +5936,11 @@ export default function App() {
     setLoadingAudioId("");
   };
 
-  const preloadSpeechText = async (text: string, messageId: string) => {
-    const speechText = createShortSpeechText(text);
-    const audioCacheKey = createAudioCacheKey(messageId, speechText);
-
-    if (
-      audioUrlCacheRef.current[audioCacheKey] ||
-      audioPreloadRef.current.has(audioCacheKey)
-    ) {
-      return;
-    }
-
-    audioPreloadRef.current.add(audioCacheKey);
-
-    try {
-      const audioUrl = await requestTtsObjectUrl(speechText, openAiApiKey);
-      audioUrlCacheRef.current[audioCacheKey] = audioUrl;
-    } catch {
-      // Preload is best-effort; the button can still fall back later.
-    } finally {
-      audioPreloadRef.current.delete(audioCacheKey);
-    }
-  };
-
-  const speakWithBrowserVoice = (text: string, messageId: string) => {
+  const speakWithBrowserVoice = (
+    text: string,
+    messageId: string,
+    notice = ""
+  ) => {
     if (
       typeof window === "undefined" ||
       !window.speechSynthesis ||
@@ -5916,7 +5965,7 @@ export default function App() {
     }
 
     utterance.onstart = () => {
-      setSpeechError("");
+      setSpeechError(notice);
       setReadingMessageId(messageId);
     };
 
@@ -5955,6 +6004,28 @@ export default function App() {
       let audioUrl = audioUrlCacheRef.current[audioCacheKey];
 
       if (!audioUrl) {
+        if (!openAiApiKey.trim()) {
+          activeAudioIdRef.current = "";
+          speakWithBrowserVoice(speechText, messageId);
+          return;
+        }
+
+        const currentTtsUsage = normalizeAiTtsUsage(aiTtsUsage, todayKey);
+
+        if (currentTtsUsage.count >= DAILY_AI_TTS_LIMIT) {
+          activeAudioIdRef.current = "";
+          speakWithBrowserVoice(
+            speechText,
+            messageId,
+            "오늘 AI 읽어주기 30회를 모두 사용해 브라우저 기본 음성으로 읽어요."
+          );
+          return;
+        }
+
+        setAiTtsUsage((prev) => {
+          const normalized = normalizeAiTtsUsage(prev, todayKey);
+          return { ...normalized, count: normalized.count + 1 };
+        });
         audioUrl = await requestTtsObjectUrl(speechText, openAiApiKey);
         audioUrlCacheRef.current[audioCacheKey] = audioUrl;
       }
@@ -6356,6 +6427,37 @@ export default function App() {
     );
   };
 
+  const applyOpenAiApiKey = (nextApiKey: string) => {
+    const normalizedKey = nextApiKey.trim();
+
+    saveAiUsageProfile(openAiApiKey, {
+      chat: normalizeAiChatUsage(aiChatUsage, todayKey),
+      features: normalizeAiFeatureUsage(aiFeatureUsage, todayKey),
+      tts: normalizeAiTtsUsage(aiTtsUsage, todayKey),
+    });
+
+    if (normalizedKey !== openAiApiKey.trim()) {
+      const nextProfile = loadAiUsageProfile(normalizedKey, todayKey) ?? {
+        chat: { dateKey: todayKey, count: 0 },
+        features: {
+          dateKey: todayKey,
+          photoCount: 0,
+          draftCount: 0,
+          cacheHits: 0,
+        },
+        tts: { dateKey: todayKey, count: 0 },
+      };
+
+      setAiChatUsage(nextProfile.chat);
+      setAiFeatureUsage(nextProfile.features);
+      setAiTtsUsage(nextProfile.tts);
+    }
+
+    setOpenAiApiKey(normalizedKey);
+    setOpenAiApiKeyDraft(normalizedKey);
+    setOpenAiApiKeyError("");
+  };
+
   const renderOpenAiKeyPanel = () => {
     if (!showOpenAiKeyPanel) return null;
 
@@ -6382,6 +6484,12 @@ export default function App() {
         used: currentFeatureUsage.draftCount,
         limit: DAILY_AI_DRAFT_LIMIT,
         color: "#C18B2F",
+      },
+      {
+        label: "읽어주기",
+        used: normalizeAiTtsUsage(aiTtsUsage, todayKey).count,
+        limit: DAILY_AI_TTS_LIMIT,
+        color: "#8A72B1",
       },
     ];
 
@@ -6449,23 +6557,31 @@ export default function App() {
             </div>
 
             <p style={styles.apiUsageNotice}>
-              같은 질문·사진 재사용은 횟수에서 제외돼요. 읽어주기는 별도예요.
+              같은 질문·사진·음성을 다시 사용하면 횟수에서 제외돼요.
             </p>
           </section>
 
           <input
             type="password"
-            value={openAiApiKey}
-            onChange={(event) => setOpenAiApiKey(event.target.value)}
+            value={openAiApiKeyDraft}
+            onChange={(event) => setOpenAiApiKeyDraft(event.target.value)}
             placeholder="sk-..."
             style={styles.apiKeyInput}
           />
 
+          <div style={styles.apiKeySecurityNotice}>
+            <strong>키 보관 안내</strong>
+            <span>
+              키는 이 브라우저에만 저장되고 AI 요청 때만 전송돼요. 공용
+              컴퓨터에서는 사용 후 삭제해 주세요. 백업 파일에는 포함되지 않아요.
+            </span>
+          </div>
+
           <p style={styles.apiKeyErrorText}>
             {openAiApiKeyError ||
               (openAiApiKey.trim()
-                ? "키가 저장되었습니다. 다시 입력하면 교체됩니다."
-                : "키를 입력하면 브라우저에 안전하게 저장됩니다.")}
+                ? "현재 키가 저장되어 있어요. 새 키를 입력하고 키 저장을 누르면 교체돼요."
+                : "사용할 API 키를 입력하고 키 저장을 눌러 주세요.")}
           </p>
 
           <div style={styles.apiKeyActions}>
@@ -6473,22 +6589,22 @@ export default function App() {
               type="button"
               style={styles.saveButton}
               onClick={() => {
-                if (!openAiApiKey.trim()) {
+                if (!openAiApiKeyDraft.trim()) {
                   setOpenAiApiKeyError("API 키를 입력해 주세요.");
                   return;
                 }
+                applyOpenAiApiKey(openAiApiKeyDraft);
                 setShowOpenAiKeyPanel(false);
               }}
             >
-              닫기
+              키 저장
             </button>
             {openAiApiKey.trim() && (
               <button
                 type="button"
                 style={styles.apiKeyRemoveButton}
                 onClick={() => {
-                  setOpenAiApiKey("");
-                  setOpenAiApiKeyError("");
+                  applyOpenAiApiKey("");
                   setShowOpenAiKeyPanel(false);
                 }}
               >
@@ -6579,7 +6695,10 @@ export default function App() {
             <button
               type="button"
               style={styles.apiKeyButton}
-              onClick={() => setShowOpenAiKeyPanel(true)}
+              onClick={() => {
+                setOpenAiApiKeyDraft(openAiApiKey);
+                setShowOpenAiKeyPanel(true);
+              }}
             >
               OpenAI 키
             </button>
@@ -9959,7 +10078,7 @@ const styles: Record<string, CSSProperties> = {
 
     apiUsageGrid: {
       display: "grid",
-      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+      gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
       gap: "8px",
     },
 
@@ -10031,6 +10150,20 @@ const styles: Record<string, CSSProperties> = {
       fontSize: "15px",
       outline: "none",
       color: "#2F4F2F",
+    },
+
+    apiKeySecurityNotice: {
+      display: "grid",
+      gap: "3px",
+      border: "1px solid #E9C879",
+      background: "#FFF8E7",
+      borderRadius: "8px",
+      padding: "10px 12px",
+      color: "#6B5624",
+      fontSize: "11px",
+      fontWeight: 750,
+      lineHeight: 1.45,
+      wordBreak: "keep-all",
     },
 
     apiKeyErrorText: {
