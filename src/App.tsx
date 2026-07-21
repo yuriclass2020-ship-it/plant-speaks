@@ -6359,6 +6359,32 @@ export default function App() {
   const renderOpenAiKeyPanel = () => {
     if (!showOpenAiKeyPanel) return null;
 
+    const currentChatUsage = normalizeAiChatUsage(aiChatUsage, todayKey);
+    const currentFeatureUsage = normalizeAiFeatureUsage(
+      aiFeatureUsage,
+      todayKey
+    );
+    const usageItems = [
+      {
+        label: "대화",
+        used: currentChatUsage.count,
+        limit: DAILY_AI_CHAT_LIMIT,
+        color: "#5F8D4E",
+      },
+      {
+        label: "사진 분석",
+        used: currentFeatureUsage.photoCount,
+        limit: DAILY_AI_PHOTO_LIMIT,
+        color: "#4D8DA8",
+      },
+      {
+        label: "기본정보",
+        used: currentFeatureUsage.draftCount,
+        limit: DAILY_AI_DRAFT_LIMIT,
+        color: "#C18B2F",
+      },
+    ];
+
     return (
       <div style={styles.apiKeyModalBackdrop}>
         <div style={styles.apiKeyModalCard}>
@@ -6377,6 +6403,55 @@ export default function App() {
               ×
             </button>
           </div>
+
+          <section style={styles.apiUsagePanel}>
+            <div style={styles.apiUsageHeader}>
+              <div>
+                <strong style={styles.apiUsageTitle}>오늘 AI 사용량</strong>
+                <span style={styles.apiUsageResetText}>매일 자정 초기화</span>
+              </div>
+              <span style={styles.apiUsageCacheText}>
+                재사용 {currentFeatureUsage.cacheHits}회
+              </span>
+            </div>
+
+            <div style={styles.apiUsageGrid}>
+              {usageItems.map((item) => {
+                const remaining = Math.max(0, item.limit - item.used);
+                const percentage = Math.min(
+                  100,
+                  Math.round((item.used / item.limit) * 100)
+                );
+
+                return (
+                  <div key={item.label} style={styles.apiUsageItem}>
+                    <div style={styles.apiUsageItemHeader}>
+                      <span>{item.label}</span>
+                      <strong>
+                        {item.used}/{item.limit}
+                      </strong>
+                    </div>
+                    <div style={styles.apiUsageTrack}>
+                      <span
+                        style={{
+                          ...styles.apiUsageFill,
+                          width: `${percentage}%`,
+                          background: item.color,
+                        }}
+                      />
+                    </div>
+                    <span style={styles.apiUsageRemaining}>
+                      {remaining > 0 ? `${remaining}회 남음` : "오늘 사용 완료"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p style={styles.apiUsageNotice}>
+              같은 질문·사진 재사용은 횟수에서 제외돼요. 읽어주기는 별도예요.
+            </p>
+          </section>
 
           <input
             type="password"
@@ -7791,29 +7866,12 @@ export default function App() {
 
                 <div style={styles.dataBackupBox}>
                   <div>
-                    <strong style={styles.dataBackupTitle}>기록 보관과 AI 사용량</strong>
+                    <strong style={styles.dataBackupTitle}>기록 보관</strong>
                     <p style={styles.dataBackupText}>
                       {autoBackupStatus} 자동 백업은 이 브라우저 안에 저장돼요.
                       다른 기기 이동이나 브라우저 데이터 삭제에 대비하려면 파일
                       백업도 저장해 주세요.
                     </p>
-                    <div style={styles.aiUsageSummary}>
-                      <span>
-                        대화 <strong>{normalizeAiChatUsage(aiChatUsage, todayKey).count}</strong>/
-                        {DAILY_AI_CHAT_LIMIT}
-                      </span>
-                      <span>
-                        사진 <strong>{normalizeAiFeatureUsage(aiFeatureUsage, todayKey).photoCount}</strong>/
-                        {DAILY_AI_PHOTO_LIMIT}
-                      </span>
-                      <span>
-                        기본정보 <strong>{normalizeAiFeatureUsage(aiFeatureUsage, todayKey).draftCount}</strong>/
-                        {DAILY_AI_DRAFT_LIMIT}
-                      </span>
-                      <span>
-                        재사용 <strong>{normalizeAiFeatureUsage(aiFeatureUsage, todayKey).cacheHits}</strong>회
-                      </span>
-                    </div>
                   </div>
                   <div style={styles.dataBackupActions}>
                     <button
@@ -9856,6 +9914,103 @@ const styles: Record<string, CSSProperties> = {
       color: "#5B4A21",
       fontSize: "14px",
       lineHeight: 1.5,
+    },
+
+    apiUsagePanel: {
+      border: "1px solid #D8E4CD",
+      background: "#F6FAF2",
+      borderRadius: "8px",
+      padding: "13px",
+    },
+
+    apiUsageHeader: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "10px",
+      marginBottom: "11px",
+    },
+
+    apiUsageTitle: {
+      display: "block",
+      color: "#2F4F2F",
+      fontSize: "15px",
+      fontWeight: 950,
+    },
+
+    apiUsageResetText: {
+      display: "block",
+      marginTop: "2px",
+      color: "#6B7F5A",
+      fontSize: "11px",
+      fontWeight: 800,
+    },
+
+    apiUsageCacheText: {
+      background: "#FFFFFF",
+      border: "1px solid #D8E4CD",
+      borderRadius: "6px",
+      padding: "5px 8px",
+      color: "#45633C",
+      fontSize: "11px",
+      fontWeight: 900,
+      whiteSpace: "nowrap",
+    },
+
+    apiUsageGrid: {
+      display: "grid",
+      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+      gap: "8px",
+    },
+
+    apiUsageItem: {
+      minWidth: 0,
+      background: "#FFFFFF",
+      border: "1px solid #E1E8D9",
+      borderRadius: "7px",
+      padding: "9px",
+    },
+
+    apiUsageItemHeader: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: "6px",
+      color: "#45633C",
+      fontSize: "11px",
+      fontWeight: 850,
+      whiteSpace: "nowrap",
+    },
+
+    apiUsageTrack: {
+      height: "6px",
+      margin: "8px 0 6px",
+      background: "#E8EDDF",
+      borderRadius: "999px",
+      overflow: "hidden",
+    },
+
+    apiUsageFill: {
+      display: "block",
+      height: "100%",
+      borderRadius: "999px",
+      transition: "width 180ms ease",
+    },
+
+    apiUsageRemaining: {
+      display: "block",
+      color: "#6B7F5A",
+      fontSize: "10px",
+      fontWeight: 800,
+    },
+
+    apiUsageNotice: {
+      margin: "9px 0 0",
+      color: "#6B7F5A",
+      fontSize: "11px",
+      fontWeight: 750,
+      lineHeight: 1.4,
+      wordBreak: "keep-all",
     },
 
     apiKeyModalCloseButton: {
@@ -13626,16 +13781,6 @@ const styles: Record<string, CSSProperties> = {
     fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
-  },
-
-  aiUsageSummary: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "7px 14px",
-    marginTop: "9px",
-    color: "#45633C",
-    fontSize: "12px",
-    fontWeight: 800,
   },
 
   chatRetryButton: {
