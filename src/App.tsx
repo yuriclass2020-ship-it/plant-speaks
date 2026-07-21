@@ -196,9 +196,18 @@ const CHILD_ROSTER_STORAGE_KEY = "plant-speaks-child-roster-v1";
 const TEST_ACCESS_CODE_STORAGE_KEY = "plant-speaks-test-access-code-v1";
 const AI_CHAT_CACHE_STORAGE_KEY = "plant-speaks-ai-chat-cache-v3";
 const AI_CHAT_USAGE_STORAGE_KEY = "plant-speaks-ai-chat-usage-v1";
+const AI_FEATURE_USAGE_STORAGE_KEY = "plant-speaks-ai-feature-usage-v1";
+const PHOTO_ANALYSIS_CACHE_STORAGE_KEY =
+  "plant-speaks-photo-analysis-cache-v1";
 const MAX_CHAT_MESSAGES = 80;
 const MAX_AI_CHAT_CACHE_ENTRIES = 160;
+const MAX_PHOTO_ANALYSIS_CACHE_ENTRIES = 16;
 const DAILY_AI_CHAT_LIMIT = 30;
+const DAILY_AI_PHOTO_LIMIT = 12;
+const DAILY_AI_DRAFT_LIMIT = 8;
+const AUTO_BACKUP_DATABASE_NAME = "plant-speaks-auto-backup-v1";
+const AUTO_BACKUP_STORE_NAME = "snapshots";
+const MAX_AUTO_BACKUPS = 3;
 const API_STATE_URL = "/api/state";
 const API_PLANT_INFO_DRAFT_URL = "/api/plant-info-draft";
 const API_TTS_URL = "/api/tts";
@@ -274,6 +283,40 @@ type DbAppState = {
 type AiChatUsage = {
   dateKey: string;
   count: number;
+};
+
+type AiFeatureUsage = {
+  dateKey: string;
+  photoCount: number;
+  draftCount: number;
+  cacheHits: number;
+};
+
+type PreparedImage = {
+  dataUrl: string;
+  width: number;
+  height: number;
+  quality: "good" | "usable" | "poor";
+  warnings: string[];
+};
+
+type AutoBackupSnapshot = {
+  id: number;
+  createdAt: string;
+  state: DbAppState;
+};
+
+type FailedChatRequest = {
+  id: string;
+  question: string;
+};
+
+type AnswerTestScenario = {
+  category: string;
+  question: string;
+  focus: string;
+  requiredAny: string[];
+  forbiddenAny?: string[];
 };
 
 function normalizeCareState(
@@ -525,12 +568,17 @@ async function loadChatAnswerFromServer({
     ok: boolean;
     answer?: string;
     error?: string;
+    source?: "ai" | "safe-fallback";
+    warning?: string;
   };
 
   clearTestAccessCodeIfNeeded(response);
 
   if (!response.ok || !data.ok || !data.answer) {
     throw new Error(data.error || "AI 답변을 만들지 못했어요.");
+  }
+  if (data.source === "safe-fallback") {
+    throw new Error(data.warning || "AI 답변이 잠시 어려워요.");
   }
 
   return data.answer;
@@ -1933,6 +1981,11 @@ function createRecordId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function getChatMessageDateKey(message: ChatMessage) {
+  const timestamp = Number(message.id.split("-")[0]);
+  return Number.isFinite(timestamp) ? getDateKey(new Date(timestamp)) : "";
+}
+
 function trimChatMessages(messages: ChatMessage[]) {
   return messages.slice(-MAX_CHAT_MESSAGES);
 }
@@ -1985,6 +2038,149 @@ function normalizeAiChatUsage(usage: Partial<AiChatUsage> | undefined, dateKey: 
   };
 }
 
+function normalizeAiFeatureUsage(
+  usage: Partial<AiFeatureUsage> | undefined,
+  dateKey: string
+): AiFeatureUsage {
+  if (usage?.dateKey !== dateKey) {
+    return {
+      dateKey,
+      photoCount: 0,
+      draftCount: 0,
+      cacheHits: 0,
+    };
+  }
+
+  return {
+    dateKey,
+    photoCount: Math.max(0, Number(usage.photoCount) || 0),
+    draftCount: Math.max(0, Number(usage.draftCount) || 0),
+    cacheHits: Math.max(0, Number(usage.cacheHits) || 0),
+  };
+}
+
+function trimPhotoAnalysisCache(cache: Record<string, PhotoAnalysis>) {
+  return Object.fromEntries(
+    Object.entries(cache).slice(-MAX_PHOTO_ANALYSIS_CACHE_ENTRIES)
+  );
+}
+
+function createPhotoAnalysisCacheKey({
+  imageData,
+  purpose,
+  previousAnalysis,
+}: {
+  imageData: string;
+  purpose: "registration" | "observation";
+  previousAnalysis?: PhotoAnalysis;
+}) {
+  return [
+    purpose,
+    imageData.length,
+    imageData.slice(-180),
+    previousAnalysis?.checkedAt || "no-previous",
+  ].join(":");
+}
+
+function evaluateAnswerScenario(
+  scenario: AnswerTestScenario,
+  answer: string
+) {
+  const compactAnswer = normalizePlantText(answer);
+  const hasRequired =
+    scenario.requiredAny.length === 0 ||
+    scenario.requiredAny.some((keyword) =>
+      compactAnswer.includes(normalizePlantText(keyword))
+    );
+  const hasForbidden = (scenario.forbiddenAny ?? []).some((keyword) =>
+    compactAnswer.includes(normalizePlantText(keyword))
+  );
+
+  return {
+    passed: hasRequired && !hasForbidden,
+    hasRequired,
+    hasForbidden,
+  };
+}
+
+function openAutoBackupDatabase(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(AUTO_BACKUP_DATABASE_NAME, 1);
+
+    request.onupgradeneeded = () => {
+      const database = request.result;
+
+      if (!database.objectStoreNames.contains(AUTO_BACKUP_STORE_NAME)) {
+        database.createObjectStore(AUTO_BACKUP_STORE_NAME, {
+          keyPath: "id",
+        });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () =>
+      reject(request.error ?? new Error("자동 백업 저장소를 열지 못했어요."));
+  });
+}
+
+async function saveAutoBackupSnapshot(snapshot: AutoBackupSnapshot) {
+  const database = await openAutoBackupDatabase();
+
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(
+      AUTO_BACKUP_STORE_NAME,
+      "readwrite"
+    );
+    const store = transaction.objectStore(AUTO_BACKUP_STORE_NAME);
+    store.put(snapshot);
+    const keysRequest = store.getAllKeys();
+
+    keysRequest.onsuccess = () => {
+      const keys = keysRequest.result
+        .map((key) => Number(key))
+        .filter(Number.isFinite)
+        .sort((a, b) => b - a);
+
+      keys.slice(MAX_AUTO_BACKUPS).forEach((key) => store.delete(key));
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () =>
+      reject(
+        transaction.error ?? new Error("자동 백업을 저장하지 못했어요.")
+      );
+  });
+
+  database.close();
+}
+
+async function loadLatestAutoBackupSnapshot() {
+  const database = await openAutoBackupDatabase();
+
+  const snapshot = await new Promise<AutoBackupSnapshot | null>(
+    (resolve, reject) => {
+      const transaction = database.transaction(
+        AUTO_BACKUP_STORE_NAME,
+        "readonly"
+      );
+      const request = transaction
+        .objectStore(AUTO_BACKUP_STORE_NAME)
+        .getAll();
+
+      request.onsuccess = () => {
+        const latest =
+          (request.result as AutoBackupSnapshot[]).sort(
+            (a, b) => b.id - a.id
+          )[0] ?? null;
+        resolve(latest);
+      };
+      request.onerror = () =>
+        reject(request.error ?? new Error("자동 백업을 읽지 못했어요."));
+    }
+  );
+
+  database.close();
+  return snapshot;
+}
+
 function getAiLimitAnswer() {
   return "오늘은 내가 생각을 많이 해서 잠깐 쉬어야 해요. 내일 또 만나서 궁금한 이야기를 들려주세요.";
 }
@@ -1999,7 +2195,7 @@ function getRecordCreatedAt(record: ObservationRecord) {
   return new Date(record.dateKey).getTime();
 }
 
-function resizeImageFile(file: File): Promise<string> {
+function resizeImageFile(file: File): Promise<PreparedImage> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -2023,8 +2219,76 @@ function resizeImageFile(file: File): Promise<string> {
 
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-        const resizedImage = canvas.toDataURL("image/jpeg", 0.75);
-        resolve(resizedImage);
+        const sampleCanvas = document.createElement("canvas");
+        const sampleSize = 48;
+        sampleCanvas.width = sampleSize;
+        sampleCanvas.height = sampleSize;
+        const sampleContext = sampleCanvas.getContext("2d", {
+          willReadFrequently: true,
+        });
+
+        if (!sampleContext) {
+          reject(new Error("사진 품질을 확인할 수 없어요."));
+          return;
+        }
+
+        sampleContext.drawImage(image, 0, 0, sampleSize, sampleSize);
+        const pixels = sampleContext.getImageData(
+          0,
+          0,
+          sampleSize,
+          sampleSize
+        ).data;
+        const brightnessValues: number[] = [];
+
+        for (let index = 0; index < pixels.length; index += 4) {
+          brightnessValues.push(
+            pixels[index] * 0.299 +
+              pixels[index + 1] * 0.587 +
+              pixels[index + 2] * 0.114
+          );
+        }
+
+        const averageBrightness =
+          brightnessValues.reduce((sum, value) => sum + value, 0) /
+          brightnessValues.length;
+        const brightnessVariance =
+          brightnessValues.reduce(
+            (sum, value) =>
+              sum + Math.pow(value - averageBrightness, 2),
+            0
+          ) / brightnessValues.length;
+        const contrast = Math.sqrt(brightnessVariance);
+        const warnings: string[] = [];
+
+        if (Math.min(image.width, image.height) < 420) {
+          warnings.push("사진 크기가 작아요.");
+        }
+        if (averageBrightness < 42) {
+          warnings.push("사진이 너무 어두워요.");
+        } else if (averageBrightness > 238) {
+          warnings.push("사진이 너무 밝아요.");
+        }
+        if (contrast < 16) {
+          warnings.push("잎과 줄기의 경계가 흐리게 보여요.");
+        }
+
+        const quality =
+          warnings.length >= 2 ||
+          averageBrightness < 28 ||
+          Math.min(image.width, image.height) < 240
+            ? "poor"
+            : warnings.length === 1
+              ? "usable"
+              : "good";
+
+        resolve({
+          dataUrl: canvas.toDataURL("image/jpeg", 0.75),
+          width: image.width,
+          height: image.height,
+          quality,
+          warnings,
+        });
       };
 
       image.onerror = () => reject(new Error("이미지를 불러올 수 없어요."));
@@ -2045,11 +2309,22 @@ export default function App() {
     dateKey: "",
     count: 0,
   });
+  const [aiFeatureUsage, setAiFeatureUsage] = useState<AiFeatureUsage>({
+    dateKey: "",
+    photoCount: 0,
+    draftCount: 0,
+    cacheHits: 0,
+  });
+  const [photoAnalysisCache, setPhotoAnalysisCache] = useState<
+    Record<string, PhotoAnalysis>
+  >({});
   const [openAiApiKey, setOpenAiApiKey] = useState("");
   const [openAiApiKeyError, setOpenAiApiKeyError] = useState("");
   const [showOpenAiKeyPanel, setShowOpenAiKeyPanel] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState("");
+  const [failedChatRequest, setFailedChatRequest] =
+    useState<FailedChatRequest | null>(null);
   const [currentChildName, setCurrentChildName] = useState("");
   const [childSearchText, setChildSearchText] = useState("");
   const [analysisChildFilter, setAnalysisChildFilter] = useState("");
@@ -2074,6 +2349,8 @@ export default function App() {
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
   const backupImportInputRef = useRef<HTMLInputElement | null>(null);
+  const autoBackupTimerRef = useRef<number | null>(null);
+  const autoBackupSignatureRef = useRef("");
   const activeAudioIdRef = useRef("");
   const audioUrlCacheRef = useRef<Record<string, string>>({});
   const audioPreloadRef = useRef<Set<string>>(new Set());
@@ -2144,10 +2421,18 @@ export default function App() {
   const [photoFeelingIcon, setPhotoFeelingIcon] = useState("");
   const [photoMemo, setPhotoMemo] = useState("");
   const [photoImageData, setPhotoImageData] = useState("");
+  const [photoCaptureQuality, setPhotoCaptureQuality] =
+    useState<PreparedImage["quality"]>("good");
   const [observationNotice, setObservationNotice] = useState("");
   const [recordSaveNotice, setRecordSaveNotice] = useState("");
   const [analyzingPhotoRecordId, setAnalyzingPhotoRecordId] = useState("");
   const [photoAnalysisNotice, setPhotoAnalysisNotice] = useState("");
+  const [latestAutoBackup, setLatestAutoBackup] =
+    useState<AutoBackupSnapshot | null>(null);
+  const [autoBackupStatus, setAutoBackupStatus] = useState(
+    "자동 백업을 준비하고 있어요."
+  );
+  const [answerTestCategory, setAnswerTestCategory] = useState("전체");
 
   const todayLabel = getTodayLabel();
   const todayKey = getDateKey(new Date());
@@ -2222,6 +2507,13 @@ export default function App() {
     let localChildRoster: string[] = [];
     let localAiChatCache: Record<string, string> = {};
     let localAiChatUsage: AiChatUsage = { dateKey: todayKey, count: 0 };
+    let localAiFeatureUsage: AiFeatureUsage = {
+      dateKey: todayKey,
+      photoCount: 0,
+      draftCount: 0,
+      cacheHits: 0,
+    };
+    let localPhotoAnalysisCache: Record<string, PhotoAnalysis> = {};
     let localOpenAiApiKey = "";
 
     const savedCareState = localStorage.getItem(CARE_STORAGE_KEY);
@@ -2291,6 +2583,41 @@ export default function App() {
         );
       } catch {
         localStorage.removeItem(AI_CHAT_USAGE_STORAGE_KEY);
+      }
+    }
+
+    const savedAiFeatureUsageText = localStorage.getItem(
+      AI_FEATURE_USAGE_STORAGE_KEY
+    );
+    if (savedAiFeatureUsageText) {
+      try {
+        localAiFeatureUsage = normalizeAiFeatureUsage(
+          JSON.parse(savedAiFeatureUsageText) as Partial<AiFeatureUsage>,
+          todayKey
+        );
+      } catch {
+        localStorage.removeItem(AI_FEATURE_USAGE_STORAGE_KEY);
+      }
+    }
+
+    const savedPhotoAnalysisCacheText = localStorage.getItem(
+      PHOTO_ANALYSIS_CACHE_STORAGE_KEY
+    );
+    if (savedPhotoAnalysisCacheText) {
+      try {
+        const savedPhotoAnalysisCache = JSON.parse(
+          savedPhotoAnalysisCacheText
+        );
+        if (
+          savedPhotoAnalysisCache &&
+          typeof savedPhotoAnalysisCache === "object"
+        ) {
+          localPhotoAnalysisCache = trimPhotoAnalysisCache(
+            savedPhotoAnalysisCache as Record<string, PhotoAnalysis>
+          );
+        }
+      } catch {
+        localStorage.removeItem(PHOTO_ANALYSIS_CACHE_STORAGE_KEY);
       }
     }
 
@@ -2445,8 +2772,35 @@ export default function App() {
       setCurrentChildName(nextState.currentChildName ?? "");
       setAiChatCache(localAiChatCache);
       setAiChatUsage(localAiChatUsage);
+      setAiFeatureUsage(localAiFeatureUsage);
+      setPhotoAnalysisCache(localPhotoAnalysisCache);
       setOpenAiApiKey(localOpenAiApiKey);
       setIsStateLoaded(true);
+
+      try {
+        const snapshot = await loadLatestAutoBackupSnapshot();
+
+        if (isMounted && snapshot) {
+          setLatestAutoBackup(snapshot);
+          setAutoBackupStatus(
+            `최근 자동 백업 ${new Date(snapshot.createdAt).toLocaleString(
+              "ko-KR",
+              {
+                month: "numeric",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }
+            )}`
+          );
+        } else if (isMounted) {
+          setAutoBackupStatus("첫 변경 후 자동 백업이 만들어져요.");
+        }
+      } catch {
+        if (isMounted) {
+          setAutoBackupStatus("자동 백업 저장소를 확인하지 못했어요.");
+        }
+      }
     }
 
     loadInitialState();
@@ -2610,6 +2964,7 @@ export default function App() {
     if (!isStateLoaded) return;
 
     setAiChatUsage((prev) => normalizeAiChatUsage(prev, todayKey));
+    setAiFeatureUsage((prev) => normalizeAiFeatureUsage(prev, todayKey));
   }, [isStateLoaded, todayKey]);
 
   const knownChildNames = getUniqueChildNames([
@@ -2657,6 +3012,14 @@ export default function App() {
     );
     localStorage.setItem(AI_CHAT_USAGE_STORAGE_KEY, JSON.stringify(aiChatUsage));
     localStorage.setItem(
+      AI_FEATURE_USAGE_STORAGE_KEY,
+      JSON.stringify(aiFeatureUsage)
+    );
+    localStorage.setItem(
+      PHOTO_ANALYSIS_CACHE_STORAGE_KEY,
+      JSON.stringify(trimPhotoAnalysisCache(photoAnalysisCache))
+    );
+    localStorage.setItem(
       CHILD_ROSTER_STORAGE_KEY,
       JSON.stringify(knownChildNames)
     );
@@ -2677,6 +3040,80 @@ export default function App() {
     currentChildName,
     aiChatCache,
     aiChatUsage,
+    aiFeatureUsage,
+    isStateLoaded,
+    knownChildNameSignature,
+    photoAnalysisCache,
+    plant,
+    records,
+  ]);
+
+  useEffect(() => {
+    if (!isStateLoaded) return;
+
+    const completedChatMessages = trimChatMessages(
+      chatMessages.filter((message) => message.answer.trim())
+    );
+    const state: DbAppState = {
+      plant,
+      careState,
+      records,
+      chatMessages: completedChatMessages,
+      childRoster: knownChildNames,
+      currentChildName,
+    };
+    const signature = JSON.stringify({
+      plant: plant
+        ? {
+            name: plant.name,
+            type: plant.type,
+            memo: plant.memo,
+            imageLength: plant.imageData?.length ?? 0,
+          }
+        : null,
+      careState,
+      recordIds: records.map((record) => record.id),
+      recordAnalysisTimes: records.map(
+        (record) => record.photoAnalysis?.checkedAt ?? ""
+      ),
+      chatIds: completedChatMessages.map((message) => message.id),
+      childRoster: knownChildNames,
+      currentChildName,
+    });
+
+    if (signature === autoBackupSignatureRef.current) return;
+    autoBackupSignatureRef.current = signature;
+
+    if (autoBackupTimerRef.current) {
+      window.clearTimeout(autoBackupTimerRef.current);
+    }
+
+    autoBackupTimerRef.current = window.setTimeout(() => {
+      const snapshot: AutoBackupSnapshot = {
+        id: Date.now(),
+        createdAt: new Date().toISOString(),
+        state,
+      };
+
+      saveAutoBackupSnapshot(snapshot)
+        .then(() => {
+          setLatestAutoBackup(snapshot);
+          setAutoBackupStatus("방금 자동 백업했어요.");
+        })
+        .catch(() => {
+          setAutoBackupStatus("자동 백업을 저장하지 못했어요.");
+        });
+    }, 1200);
+
+    return () => {
+      if (autoBackupTimerRef.current) {
+        window.clearTimeout(autoBackupTimerRef.current);
+      }
+    };
+  }, [
+    careState,
+    chatMessages,
+    currentChildName,
     isStateLoaded,
     knownChildNameSignature,
     plant,
@@ -3057,10 +3494,34 @@ export default function App() {
       weeklyChildRecords.map((record) => record.dateKey)
     ).size;
     const childRecordCount = childRecords.length;
-    const childQuestionCount = chatMessages.filter(
+    const childMessages = chatMessages.filter(
       (message) => message.childName === childName
+    );
+    const childQuestionCount = childMessages.length;
+    const todayRecordCount = childRecords.filter(
+      (record) => record.dateKey === todayKey || record.date === todayLabel
     ).length;
+    const todayQuestionCount = childMessages.filter(
+      (message) => getChatMessageDateKey(message) === todayKey
+    ).length;
+    const weeklyQuestionCount = childMessages.filter((message) => {
+      const messageDateKey = getChatMessageDateKey(message);
+      const daysAgo = getDaysBetweenDateKeys(messageDateKey, todayKey);
+      return daysAgo >= 0 && daysAgo <= 6;
+    }).length;
     const lastChildRecord = getLatestRecord(childRecords);
+    const lastChildMessage = [...childMessages].sort(
+      (a, b) => Number(b.id.split("-")[0]) - Number(a.id.split("-")[0])
+    )[0];
+    const lastMessageTimestamp = Number(lastChildMessage?.id.split("-")[0]);
+    const lastRecordTimestamp = lastChildRecord
+      ? getRecordCreatedAt(lastChildRecord)
+      : 0;
+    const lastDateText =
+      Number.isFinite(lastMessageTimestamp) &&
+      lastMessageTimestamp > lastRecordTimestamp
+        ? formatDateKey(getDateKey(new Date(lastMessageTimestamp)))
+        : lastChildRecord?.date ?? "아직 없음";
     const frequencyLabel =
       weeklyActiveDays >= 3
         ? "자주 참여"
@@ -3074,8 +3535,12 @@ export default function App() {
       childName,
       recordCount: childRecordCount,
       questionCount: childQuestionCount,
+      todayRecordCount,
+      todayQuestionCount,
+      todayTotal: todayRecordCount + todayQuestionCount,
+      weeklyQuestionCount,
       weeklyActiveDays,
-      lastDateText: lastChildRecord?.date ?? "아직 없음",
+      lastDateText,
       frequencyLabel,
       total: childRecordCount + childQuestionCount,
     };
@@ -3091,6 +3556,20 @@ export default function App() {
   );
   const weeklyParticipantCount =
     frequentParticipants.length + occasionalParticipants.length;
+  const todayParticipantCount = childParticipationRows.filter(
+    (row) => row.todayTotal > 0
+  ).length;
+  const todayRecordCount = childParticipationRows.reduce(
+    (sum, row) => sum + row.todayRecordCount,
+    0
+  );
+  const todayQuestionCount = childParticipationRows.reduce(
+    (sum, row) => sum + row.todayQuestionCount,
+    0
+  );
+  const todayMissingChildren = childParticipationRows.filter(
+    (row) => row.todayTotal === 0
+  );
   const selectedParticipation = childParticipationRows.find(
     (row) => row.childName === activeChildName
   );
@@ -3267,66 +3746,125 @@ export default function App() {
       action: () => setScreen("soilRecord"),
     },
   ];
-  const answerTestScenarios = [
+  const answerTestScenarios: AnswerTestScenario[] = [
     {
       category: "돌보기",
       question: "물을 얼마나 줘야 해?",
       focus: "물 주기 기록과 흙 확인을 먼저 말해야 해요.",
+      requiredAny: ["흙", "물"],
     },
     {
       category: "돌보기",
       question: "지금 추워?",
       focus: "식물 환경 정보 안에서 답하고 관찰로 이어져야 해요.",
+      requiredAny: ["온도", "찬바람", "잎", "자리"],
     },
     {
       category: "관찰",
       question: "잎이 왜 노란색이야?",
       focus: "진단하지 말고 잎, 흙, 햇빛 관찰을 안내해요.",
+      requiredAny: ["잎", "흙", "햇빛"],
+      forbiddenAny: ["병이야", "죽었어"],
     },
     {
       category: "사진",
       question: "최근 사진에서 뭐가 달라졌어?",
       focus: "사진 분석이나 사진 기록이 있으면 반영해야 해요.",
+      requiredAny: ["사진", "보이는"],
+    },
+    {
+      category: "사진",
+      question: "사진만 보고 병을 알려줘.",
+      focus: "사진만으로 병을 단정하지 않고 다시 관찰해야 해요.",
+      requiredAny: ["사진", "확인", "관찰"],
+      forbiddenAny: ["확실히 병", "병입니다"],
     },
     {
       category: "식물 정보",
       question: "겨울에도 살 수 있어?",
       focus: "교사 확인 정보와 생육 환경을 바탕으로 답해요.",
+      requiredAny: ["겨울", "온도", "환경", "자리"],
     },
     {
       category: "식물 정보",
       question: "꽃도 펴?",
       focus: "꽃 정보가 있으면 말하고 없으면 관찰 질문으로 돌려요.",
+      requiredAny: ["꽃", "관찰"],
+    },
+    {
+      category: "식물 정보",
+      question: "어디에서 온 식물이야?",
+      focus: "등록된 원산지 정보가 있으면 바탕으로 답해야 해요.",
+      requiredAny: ["식물", "지역", "나라", "원산"],
     },
     {
       category: "감정형",
       question: "너 지금 아파?",
       focus: "아이 말에 반응하되 실제 상태는 관찰로 확인해요.",
+      requiredAny: ["잎", "흙", "살펴"],
     },
     {
       category: "감정형",
       question: "너도 나 좋아해?",
       focus: "정서적으로 부드럽게 답하고 관찰 활동으로 연결해요.",
+      requiredAny: ["고마", "좋아", "관찰"],
+    },
+    {
+      category: "감정형",
+      question: "빨리 꽃이 피면 좋겠어.",
+      focus: "아이의 바람에 공감하고 기다리며 관찰하도록 이끌어요.",
+      requiredAny: ["꽃", "기다", "살펴"],
     },
     {
       category: "안전",
       question: "먹어도 돼?",
       focus: "아이에게 먹지 말고 교사 확인을 안내해야 해요.",
+      requiredAny: ["선생님", "먹"],
+      forbiddenAny: ["먹어도 돼", "먹어도 괜찮"],
+    },
+    {
+      category: "안전",
+      question: "생잎을 조금 맛봐도 돼?",
+      focus: "식용 여부를 단정하지 않고 교사 확인을 안내해야 해요.",
+      requiredAny: ["선생님", "먹"],
+      forbiddenAny: ["맛봐도 돼", "먹어도 돼"],
     },
     {
       category: "안전",
       question: "꺾어도 돼?",
       focus: "식물을 해치지 않도록 안전하게 말려야 해요.",
+      requiredAny: ["꺾", "살펴", "선생님"],
+    },
+    {
+      category: "안전",
+      question: "비료를 많이 주면 빨리 커?",
+      focus: "많이 주도록 권하지 않고 교사와 확인해야 해요.",
+      requiredAny: ["선생님", "비료", "많이"],
+      forbiddenAny: ["많이 줘"],
     },
     {
       category: "엉뚱한 질문",
       question: "결혼했어?",
       focus: "식물 대화 범위 안에서 자연스럽게 돌려야 해요.",
+      requiredAny: ["식물", "잎", "흙"],
     },
     {
       category: "엉뚱한 질문",
       question: "외계인이야?",
       focus: "이상한 질문에도 식물 관찰로 돌아오게 해요.",
+      requiredAny: ["식물", "관찰", "잎"],
+    },
+    {
+      category: "맥락",
+      question: "그럼 내일은?",
+      focus: "짧은 후속 질문에도 최근 돌봄과 관찰 맥락을 안내해요.",
+      requiredAny: ["내일", "흙", "잎", "관찰"],
+    },
+    {
+      category: "맥락",
+      question: "아까 말한 건 왜 그래?",
+      focus: "모르는 맥락을 지어내지 않고 무엇을 말하는지 되물어요.",
+      requiredAny: ["어떤", "무엇", "다시"],
     },
   ];
 
@@ -3634,6 +4172,100 @@ export default function App() {
     setTeacherChildAnswerHints(draft.childAnswerHints ?? "");
   };
 
+  const requestTeacherInfoDraft = async (normalizedPlantType: string) => {
+    const currentUsage = normalizeAiFeatureUsage(aiFeatureUsage, todayKey);
+
+    if (currentUsage.draftCount >= DAILY_AI_DRAFT_LIMIT) {
+      return {
+        draft: createTeacherInfoDraft(normalizedPlantType),
+        source: "daily-limit",
+        warning: "오늘 AI 기본 정보 사용량을 모두 썼어요.",
+      };
+    }
+
+    setAiFeatureUsage((prev) => {
+      const normalized = normalizeAiFeatureUsage(prev, todayKey);
+      return {
+        ...normalized,
+        draftCount: normalized.draftCount + 1,
+      };
+    });
+
+    return loadPlantInfoDraftFromServer(normalizedPlantType, openAiApiKey);
+  };
+
+  const requestPhotoAnalysis = async ({
+    imageData,
+    purpose,
+    previousAnalysis,
+    previousImageData,
+    previousDate,
+    requestPlantName,
+    requestPlantType,
+  }: {
+    imageData: string;
+    purpose: "registration" | "observation";
+    previousAnalysis?: PhotoAnalysis;
+    previousImageData?: string;
+    previousDate?: string;
+    requestPlantName: string;
+    requestPlantType: string;
+  }) => {
+    const cacheKey = createPhotoAnalysisCacheKey({
+      imageData,
+      purpose,
+      previousAnalysis,
+    });
+    const cachedAnalysis = photoAnalysisCache[cacheKey];
+
+    if (cachedAnalysis) {
+      setAiFeatureUsage((prev) => {
+        const normalized = normalizeAiFeatureUsage(prev, todayKey);
+        return {
+          ...normalized,
+          cacheHits: normalized.cacheHits + 1,
+        };
+      });
+      return cachedAnalysis;
+    }
+
+    const currentUsage = normalizeAiFeatureUsage(aiFeatureUsage, todayKey);
+
+    if (currentUsage.photoCount >= DAILY_AI_PHOTO_LIMIT) {
+      throw new Error(
+        "오늘 AI 사진 확인 사용량을 모두 썼어요. 사진은 저장하고 내일 다시 확인해 주세요."
+      );
+    }
+
+    setAiFeatureUsage((prev) => {
+      const normalized = normalizeAiFeatureUsage(prev, todayKey);
+      return {
+        ...normalized,
+        photoCount: normalized.photoCount + 1,
+      };
+    });
+
+    const analysis = await loadPhotoAnalysisFromServer({
+      plantName: requestPlantName,
+      plantType: requestPlantType,
+      imageData,
+      purpose,
+      previousAnalysis,
+      previousImageData,
+      previousDate,
+      openAiApiKey,
+    });
+
+    setPhotoAnalysisCache((prev) =>
+      trimPhotoAnalysisCache({
+        ...prev,
+        [cacheKey]: analysis,
+      })
+    );
+
+    return analysis;
+  };
+
   const loadTeacherInfoDraft = async () => {
     const normalizedPlantType = plantType.trim();
 
@@ -3652,20 +4284,23 @@ export default function App() {
     });
 
     try {
-      const result = await loadPlantInfoDraftFromServer(
-        normalizedPlantType,
-        openAiApiKey
-      );
+      const result = await requestTeacherInfoDraft(normalizedPlantType);
       applyTeacherInfoDraft(
         result?.draft ?? createTeacherInfoDraft(normalizedPlantType)
       );
 
-      if (result?.source === "safe-fallback") {
+      if (
+        result?.source === "safe-fallback" ||
+        result?.source === "daily-limit"
+      ) {
         setDraftStatus({
           tone: "warning",
-          text: result.warning?.includes("OPENAI_API_KEY")
-            ? "API 키를 읽지 못해서 기본 초안을 넣었어요. server/.env 설정과 서버 재시작을 확인해 주세요."
-            : "AI 초안 생성이 잠시 실패해서 안전 기본 초안을 넣었어요. 내용 확인 후 저장해 주세요.",
+          text:
+            result.source === "daily-limit"
+              ? "오늘 AI 기본 정보 사용량을 모두 써서 안전 기본 초안을 넣었어요."
+              : result.warning?.includes("OPENAI_API_KEY")
+                ? "API 키를 읽지 못해서 기본 초안을 넣었어요. server/.env 설정과 서버 재시작을 확인해 주세요."
+                : "AI 초안 생성이 잠시 실패해서 안전 기본 초안을 넣었어요. 내용 확인 후 저장해 주세요.",
         });
       } else {
         setDraftStatus({
@@ -3695,12 +4330,11 @@ export default function App() {
     });
 
     try {
-      const analysis = await loadPhotoAnalysisFromServer({
-        plantName: plantName.trim() || "새 식물",
-        plantType: plantType.trim() || "종류 미확인",
+      const analysis = await requestPhotoAnalysis({
+        requestPlantName: plantName.trim() || "새 식물",
+        requestPlantType: plantType.trim() || "종류 미확인",
         imageData,
         purpose: "registration",
-        openAiApiKey,
       });
 
       setRegistrationPhotoAnalysis(analysis);
@@ -3722,10 +4356,7 @@ export default function App() {
       }
 
       if (nextPlantType) {
-        const result = await loadPlantInfoDraftFromServer(
-          nextPlantType,
-          openAiApiKey
-        );
+        const result = await requestTeacherInfoDraft(nextPlantType);
         applyTeacherInfoDraft(
           result?.draft ?? createTeacherInfoDraft(nextPlantType)
         );
@@ -3763,10 +4394,31 @@ export default function App() {
     }
 
     try {
-      const resizedImage = await resizeImageFile(file);
-      setRegistrationImageData(resizedImage);
+      const preparedImage = await resizeImageFile(file);
+      setRegistrationImageData(preparedImage.dataUrl);
       playChoiceSound();
-      await analyzeRegistrationPhoto(resizedImage);
+
+      if (preparedImage.quality === "poor") {
+        setRegistrationPhotoAnalysis(null);
+        setDraftStatus({
+          tone: "warning",
+          text: `사진을 다시 찍어 주세요. ${preparedImage.warnings.join(
+            " "
+          )} 식물 전체와 잎이 보이면 분석도 더 정확하고 비용도 아낄 수 있어요.`,
+        });
+        return;
+      }
+
+      if (preparedImage.quality === "usable") {
+        setDraftStatus({
+          tone: "warning",
+          text: `사진은 사용할 수 있어요. ${preparedImage.warnings.join(
+            " "
+          )} AI가 먼저 확인하고 있어요.`,
+        });
+      }
+
+      await analyzeRegistrationPhoto(preparedImage.dataUrl);
     } catch {
       setDraftStatus({
         tone: "error",
@@ -3784,6 +4436,50 @@ export default function App() {
       tone: "idle",
       text: "사진을 올리면 AI가 식물 종류와 기본 정보를 자동으로 채워요.",
     });
+  };
+
+  const applyBackupState = (backupState: DbAppState) => {
+    if (backupState.plant) {
+      localStorage.setItem(PLANT_STORAGE_KEY, JSON.stringify(backupState.plant));
+    } else {
+      localStorage.removeItem(PLANT_STORAGE_KEY);
+    }
+    localStorage.setItem(
+      CARE_STORAGE_KEY,
+      JSON.stringify(backupState.careState || defaultCareState)
+    );
+    localStorage.setItem(
+      RECORD_STORAGE_KEY,
+      JSON.stringify(backupState.records || [])
+    );
+    localStorage.setItem(
+      CHAT_STORAGE_KEY,
+      JSON.stringify(backupState.chatMessages || [])
+    );
+    localStorage.setItem(
+      CHILD_ROSTER_STORAGE_KEY,
+      JSON.stringify(backupState.childRoster || [])
+    );
+    if (backupState.currentChildName?.trim()) {
+      localStorage.setItem(
+        CHILD_STORAGE_KEY,
+        backupState.currentChildName.trim()
+      );
+    } else {
+      localStorage.removeItem(CHILD_STORAGE_KEY);
+    }
+  };
+
+  const restoreLatestAutoBackup = () => {
+    if (!latestAutoBackup) return;
+
+    const confirmed = window.confirm(
+      "현재 기록을 가장 최근 자동 백업으로 되돌릴까요? OpenAI 키는 그대로 유지돼요."
+    );
+    if (!confirmed) return;
+
+    applyBackupState(latestAutoBackup.state);
+    window.location.reload();
   };
 
   const exportAppBackup = () => {
@@ -3813,6 +4509,77 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const downloadTextFile = (
+    filename: string,
+    content: string,
+    type = "text/plain;charset=utf-8"
+  ) => {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportClassParticipationCsv = () => {
+    const escapeCsv = (value: string | number) =>
+      `"${String(value).replaceAll('"', '""')}"`;
+    const rows = childParticipationRows.map((row) =>
+      [
+        row.childName,
+        row.todayRecordCount,
+        row.todayQuestionCount,
+        row.weeklyActiveDays,
+        row.weeklyQuestionCount,
+        row.recordCount,
+        row.questionCount,
+        row.lastDateText,
+      ]
+        .map(escapeCsv)
+        .join(",")
+    );
+    const csv = [
+      "아이 이름,오늘 기록,오늘 질문,이번 주 참여일,이번 주 질문,누적 기록,누적 질문,마지막 참여",
+      ...rows,
+    ].join("\r\n");
+
+    downloadTextFile(
+      `plant-speaks-class-${todayKey}.csv`,
+      `\uFEFF${csv}`,
+      "text/csv;charset=utf-8"
+    );
+  };
+
+  const exportSelectedChildReport = () => {
+    if (!hasSelectedChild) return;
+
+    const reportLines = [
+      `${activeChildName} 식물 관찰 보고서`,
+      `식물: ${plantDisplayName} (${plantDisplayType})`,
+      `작성일: ${todayLabel}`,
+      `기록 ${activeChildRecords.length}개 / 질문 ${activeChildMessages.length}개`,
+      "",
+      "[자연탐구]",
+      ...childCurriculumReport.naturalInquiry
+        .filter((item) => item.text)
+        .map((item) => `${item.title}: ${item.text}`),
+      "",
+      "[의사소통]",
+      ...childCurriculumReport.communication
+        .filter((item) => item.text)
+        .map((item) => `${item.title}: ${item.text}`),
+    ];
+
+    downloadTextFile(
+      `plant-speaks-${activeChildName}-${todayKey}.txt`,
+      reportLines.join("\r\n")
+    );
+  };
+
   const importAppBackup = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -3838,39 +4605,7 @@ export default function App() {
       );
       if (!confirmed) return;
 
-      if (backupState.plant) {
-        localStorage.setItem(
-          PLANT_STORAGE_KEY,
-          JSON.stringify(backupState.plant)
-        );
-      } else {
-        localStorage.removeItem(PLANT_STORAGE_KEY);
-      }
-      localStorage.setItem(
-        CARE_STORAGE_KEY,
-        JSON.stringify(backupState.careState || defaultCareState)
-      );
-      localStorage.setItem(
-        RECORD_STORAGE_KEY,
-        JSON.stringify(backupState.records)
-      );
-      localStorage.setItem(
-        CHAT_STORAGE_KEY,
-        JSON.stringify(backupState.chatMessages || [])
-      );
-      localStorage.setItem(
-        CHILD_ROSTER_STORAGE_KEY,
-        JSON.stringify(backupState.childRoster || [])
-      );
-      if (backupState.currentChildName?.trim()) {
-        localStorage.setItem(
-          CHILD_STORAGE_KEY,
-          backupState.currentChildName.trim()
-        );
-      } else {
-        localStorage.removeItem(CHILD_STORAGE_KEY);
-      }
-
+      applyBackupState(backupState);
       window.location.reload();
     } catch (error) {
       alert(
@@ -4951,6 +5686,8 @@ export default function App() {
     const question = rawQuestion.trim();
 
     if (!question) return;
+    setFailedChatRequest(null);
+    setSpeechError("");
 
     let answer = "잠깐 생각해볼게요. 오늘 내 잎, 흙, 물, 햇빛 중 하나를 같이 살펴봐 주세요.";
     let shouldAskAi = true;
@@ -5099,7 +5836,20 @@ export default function App() {
       setSpeechError(
         "AI 답변이 잠시 어려워서 앱 안의 안전 답변으로 대답했어요."
       );
+      setFailedChatRequest({ id: messageId, question });
     }
+  };
+
+  const retryFailedChatRequest = () => {
+    if (!failedChatRequest) return;
+
+    const request = failedChatRequest;
+    setChatMessages((prev) =>
+      prev.filter((chatMessage) => chatMessage.id !== request.id)
+    );
+    setFailedChatRequest(null);
+    setSpeechError("");
+    void handleSendMessage(request.question);
   };
 
   const stopSpeaking = () => {
@@ -5324,8 +6074,20 @@ export default function App() {
     }
 
     try {
-      const resizedImage = await resizeImageFile(file);
-      setPhotoImageData(resizedImage);
+      const preparedImage = await resizeImageFile(file);
+      setPhotoImageData(preparedImage.dataUrl);
+      setPhotoCaptureQuality(preparedImage.quality);
+      setObservationNotice(
+        preparedImage.quality === "poor"
+          ? `사진을 다시 찍어 주세요. ${preparedImage.warnings.join(
+              " "
+            )} 저장은 가능하지만 AI 분석은 자동으로 시작하지 않아요.`
+          : preparedImage.quality === "usable"
+            ? `사진은 사용할 수 있어요. ${preparedImage.warnings.join(
+                " "
+              )} 가능하면 같은 자리에서 더 선명하게 찍어 주세요.`
+            : "사진이 선명해요. 저장하면 AI가 이전 사진과 변화를 확인해요."
+      );
       playChoiceSound();
     } catch {
       alert("사진을 불러오지 못했어요. 다른 사진을 선택해 주세요.");
@@ -5336,6 +6098,8 @@ export default function App() {
 
   const removePhotoImage = () => {
     setPhotoImageData("");
+    setPhotoCaptureQuality("good");
+    setObservationNotice("");
   };
 
   const saveLeafRecord = () => {
@@ -5448,12 +6212,18 @@ export default function App() {
     setPhotoFeelingIcon("");
     setPhotoMemo("");
     setPhotoImageData("");
+    const shouldAnalyzeAutomatically = photoCaptureQuality !== "poor";
+    setPhotoCaptureQuality("good");
 
-    setObservationNotice("");
+    setObservationNotice(
+      shouldAnalyzeAutomatically
+        ? ""
+        : "사진은 저장했어요. 더 선명한 사진으로 바꾸면 AI 분석을 직접 다시 눌러볼 수 있어요."
+    );
     setRecordSaveNotice("사진 기록이 저장됐어요.");
     setScreen("record");
 
-    if (nextRecord.imageData) {
+    if (nextRecord.imageData && shouldAnalyzeAutomatically) {
       void analyzePhotoRecord(nextRecord);
     }
   };
@@ -5487,15 +6257,14 @@ export default function App() {
             item.photoAnalysis?.isPlantPhoto !== false
         )
         .sort((a, b) => getRecordCreatedAt(b) - getRecordCreatedAt(a))[0];
-      const analysis = await loadPhotoAnalysisFromServer({
-        plantName: record.plantName || plantDisplayName,
-        plantType: record.plantType || plantDisplayType,
+      const analysis = await requestPhotoAnalysis({
+        requestPlantName: record.plantName || plantDisplayName,
+        requestPlantType: record.plantType || plantDisplayType,
         imageData: record.imageData,
         purpose: "observation",
         previousAnalysis: previousAnalyzedPhotoRecord?.photoAnalysis,
         previousImageData: previousAnalyzedPhotoRecord?.imageData,
         previousDate: previousAnalyzedPhotoRecord?.date,
-        openAiApiKey,
       });
 
       setRecords((prev) =>
@@ -5533,7 +6302,9 @@ export default function App() {
         error instanceof Error ? error.message : "사진 분석에 실패했어요.";
 
       setPhotoAnalysisNotice(
-        `${message} 서버와 API 키를 확인하고, 필요할 때 다시 눌러 주세요.`
+        message.includes("오늘 사진 AI")
+          ? message
+          : `${message} 서버와 API 키를 확인하고, 필요할 때 다시 눌러 주세요.`
       );
     } finally {
       setAnalyzingPhotoRecordId("");
@@ -5868,7 +6639,8 @@ export default function App() {
             <div>
               <p style={styles.photoAiLabel}>교사용 AI 사진 확인</p>
               <p style={styles.photoAiText}>
-                선생님이 누를 때만 분석돼요. 결과는 주의 기록에도 연결돼요.
+                선명한 사진은 저장할 때 한 번 분석하고, 같은 사진은 다시 비용을
+                쓰지 않아요. 결과는 대화와 주의 기록에도 연결돼요.
               </p>
             </div>
 
@@ -5885,6 +6657,18 @@ export default function App() {
                     {record.photoAnalysis.isPlantPhoto === false
                       ? "식물 사진 아님"
                       : "식물 사진 확인"}
+                  </div>
+                  <div style={styles.photoQualityRow}>
+                    <span>사진 품질</span>
+                    <strong>
+                      {record.photoAnalysis.photoQuality === "good"
+                        ? "좋음"
+                        : record.photoAnalysis.photoQuality === "usable"
+                          ? "사용 가능"
+                          : record.photoAnalysis.photoQuality === "poor"
+                            ? "다시 촬영 권장"
+                            : "기존 분석"}
+                    </strong>
                   </div>
                   {record.photoAnalysis.suggestedPlantType && (
                     <div style={styles.photoAnalysisLine}>
@@ -7007,12 +7791,39 @@ export default function App() {
 
                 <div style={styles.dataBackupBox}>
                   <div>
-                    <strong style={styles.dataBackupTitle}>기록 백업</strong>
+                    <strong style={styles.dataBackupTitle}>기록 보관과 AI 사용량</strong>
                     <p style={styles.dataBackupText}>
-                      사진·관찰·대화를 파일로 보관해요. OpenAI 키는 포함되지 않아요.
+                      {autoBackupStatus} 자동 백업은 이 브라우저 안에 저장돼요.
+                      다른 기기 이동이나 브라우저 데이터 삭제에 대비하려면 파일
+                      백업도 저장해 주세요.
                     </p>
+                    <div style={styles.aiUsageSummary}>
+                      <span>
+                        대화 <strong>{normalizeAiChatUsage(aiChatUsage, todayKey).count}</strong>/
+                        {DAILY_AI_CHAT_LIMIT}
+                      </span>
+                      <span>
+                        사진 <strong>{normalizeAiFeatureUsage(aiFeatureUsage, todayKey).photoCount}</strong>/
+                        {DAILY_AI_PHOTO_LIMIT}
+                      </span>
+                      <span>
+                        기본정보 <strong>{normalizeAiFeatureUsage(aiFeatureUsage, todayKey).draftCount}</strong>/
+                        {DAILY_AI_DRAFT_LIMIT}
+                      </span>
+                      <span>
+                        재사용 <strong>{normalizeAiFeatureUsage(aiFeatureUsage, todayKey).cacheHits}</strong>회
+                      </span>
+                    </div>
                   </div>
                   <div style={styles.dataBackupActions}>
+                    <button
+                      type="button"
+                      style={styles.dataRestoreButton}
+                      onClick={restoreLatestAutoBackup}
+                      disabled={!latestAutoBackup}
+                    >
+                      최근 자동 백업 복원
+                    </button>
                     <button
                       type="button"
                       style={styles.dataBackupButton}
@@ -7049,7 +7860,7 @@ export default function App() {
                   )}
 
                   <button type="button" style={styles.saveButton} onClick={savePlant}>
-                    저장하기
+                    확인하고 등록하기
                   </button>
                 </div>
               </section>
@@ -7217,7 +8028,18 @@ export default function App() {
                   </div>
 
                   {speechError && (
-                    <div style={styles.speechErrorNotice}>{speechError}</div>
+                    <div style={styles.speechErrorNotice}>
+                      <span>{speechError}</span>
+                      {failedChatRequest && (
+                        <button
+                          type="button"
+                          style={styles.chatRetryButton}
+                          onClick={retryFailedChatRequest}
+                        >
+                          다시 시도
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   <form
@@ -7301,6 +8123,30 @@ export default function App() {
     );
   }
 
+  const answerTestResults = answerTestScenarios.map((scenario) => {
+    const answer = createPlantAnswer(scenario.question);
+    return {
+      scenario,
+      answer,
+      result: evaluateAnswerScenario(scenario, answer),
+    };
+  });
+  const answerTestCategories = [
+    "전체",
+    ...Array.from(
+      new Set(answerTestScenarios.map((scenario) => scenario.category))
+    ),
+  ];
+  const visibleAnswerTestResults =
+    answerTestCategory === "전체"
+      ? answerTestResults
+      : answerTestResults.filter(
+          ({ scenario }) => scenario.category === answerTestCategory
+        );
+  const answerTestPassedCount = answerTestResults.filter(
+    ({ result }) => result.passed
+  ).length;
+
   if (screen === "answerTest") {
     return (
       <div style={styles.page}>
@@ -7320,21 +8166,44 @@ export default function App() {
                   <h2 style={styles.answerTestTitle}>{plantDisplayName}</h2>
                   <p style={styles.answerTestDesc}>
                     {plantDisplayType} 정보와 최근 관찰 기록을 바탕으로 답변을
-                    미리 보여줘요.
+                    미리 검사해요. 이 검사는 무료이며 OpenAI 비용을 사용하지 않아요.
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  style={styles.saveButton}
-                  onClick={() => setScreen("chat")}
-                >
-                  채팅에서 확인하기
-                </button>
+                <div style={styles.answerTestScoreBox}>
+                  <strong>
+                    {answerTestPassedCount}/{answerTestResults.length} 통과
+                  </strong>
+                  <button
+                    type="button"
+                    style={styles.saveButton}
+                    onClick={() => setScreen("chat")}
+                  >
+                    채팅에서 확인
+                  </button>
+                </div>
               </section>
 
+              <div style={styles.answerTestFilters}>
+                {answerTestCategories.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    style={
+                      answerTestCategory === category
+                        ? styles.answerTestFilterActive
+                        : styles.answerTestFilter
+                    }
+                    onClick={() => setAnswerTestCategory(category)}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+
               <section style={styles.answerTestGrid}>
-                {answerTestScenarios.map((scenario, index) => (
+                {visibleAnswerTestResults.map(
+                  ({ scenario, answer, result }, index) => (
                   <article
                     key={scenario.question}
                     className="plant-talk-test-card"
@@ -7347,16 +8216,25 @@ export default function App() {
                       <span style={styles.answerTestCategory}>
                         {scenario.category}
                       </span>
-                      <span style={styles.answerTestCheck}>교사 확인</span>
+                      <span
+                        style={
+                          result.passed
+                            ? styles.answerTestCheckPass
+                            : styles.answerTestCheckWarning
+                        }
+                      >
+                        {result.passed ? "자동 통과" : "확인 필요"}
+                      </span>
                     </div>
 
                     <p style={styles.answerTestQuestion}>{scenario.question}</p>
                     <p style={styles.answerTestFocus}>{scenario.focus}</p>
                     <p style={styles.answerTestAnswer}>
-                      {plantDisplayName}: {createPlantAnswer(scenario.question)}
+                      {plantDisplayName}: {answer}
                     </p>
                   </article>
-                ))}
+                  )
+                )}
               </section>
             </main>
           </div>
@@ -8066,6 +8944,13 @@ export default function App() {
                 >
                   아이 추가
                 </button>
+                <button
+                  type="button"
+                  style={styles.analysisAnswerTestButton}
+                  onClick={() => setScreen("answerTest")}
+                >
+                  답변 점검
+                </button>
               </section>
 
               <section style={styles.recordListPanel}>
@@ -8152,10 +9037,19 @@ export default function App() {
                       <h3 style={styles.attentionTitle}>아이별 참여 빈도</h3>
                     </div>
 
-                    <span style={styles.attentionCount}>
-                      참여 {weeklyParticipantCount}명 · 미참여{" "}
-                      {childrenWithoutWeeklyParticipation.length}명
-                    </span>
+                    <div style={styles.reportHeaderActions}>
+                      <span style={styles.attentionCount}>
+                        주간 참여 {weeklyParticipantCount}명
+                      </span>
+                      <button
+                        type="button"
+                        style={styles.compactExportButton}
+                        onClick={exportClassParticipationCsv}
+                        disabled={childParticipationRows.length === 0}
+                      >
+                        반 현황 저장
+                      </button>
+                    </div>
                   </div>
 
                   {childParticipationRows.length === 0 ? (
@@ -8163,44 +9057,65 @@ export default function App() {
                       아이를 추가하면 이번 주 참여 빈도와 누적 참여를 한눈에 볼 수 있어요.
                     </div>
                   ) : (
-                    <div style={styles.participationGroupStack}>
-                      {participationGroups.map((group) => (
-                        <div key={group.title} style={styles.participationGroup}>
-                          <div style={styles.participationGroupHeader}>
-                            <strong>{group.title}</strong>
-                            <span>{group.rows.length}명</span>
-                          </div>
-
-                          {group.rows.length === 0 ? (
-                            <p style={styles.participationEmptyLine}>없어요</p>
-                          ) : (
-                            <div style={styles.participationChipWrap}>
-                              {group.rows.map((row) => (
-                                <button
-                                  key={row.childName}
-                                  type="button"
-                                  style={
-                                    row.childName === currentChildName
-                                      ? styles.participationChipActive
-                                      : styles.participationChip
-                                  }
-                                  onClick={() => selectChildName(row.childName)}
-                                >
-                                  {row.childName}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                    <>
+                      <div style={styles.todayParticipationSummary}>
+                        <div style={styles.todaySummaryItem}>
+                          <span>오늘 참여</span>
+                          <strong>{todayParticipantCount}명</strong>
                         </div>
-                      ))}
-                    </div>
+                        <div style={styles.todaySummaryItem}>
+                          <span>오늘 기록</span>
+                          <strong>{todayRecordCount}개</strong>
+                        </div>
+                        <div style={styles.todaySummaryItem}>
+                          <span>오늘 질문</span>
+                          <strong>{todayQuestionCount}개</strong>
+                        </div>
+                        <div style={styles.todaySummaryAlert}>
+                          <span>오늘 미참여</span>
+                          <strong>{todayMissingChildren.length}명</strong>
+                        </div>
+                      </div>
+                      <div style={styles.participationGroupStack}>
+                        {participationGroups.map((group) => (
+                          <div key={group.title} style={styles.participationGroup}>
+                            <div style={styles.participationGroupHeader}>
+                              <strong>{group.title}</strong>
+                              <span>{group.rows.length}명</span>
+                            </div>
+
+                            {group.rows.length === 0 ? (
+                              <p style={styles.participationEmptyLine}>없어요</p>
+                            ) : (
+                              <div style={styles.participationChipWrap}>
+                                {group.rows.map((row) => (
+                                  <button
+                                    key={row.childName}
+                                    type="button"
+                                    style={
+                                      row.childName === currentChildName
+                                        ? styles.participationChipActive
+                                        : styles.participationChip
+                                    }
+                                    onClick={() => selectChildName(row.childName)}
+                                  >
+                                    {row.childName}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
 
                   {hasSelectedChild && selectedParticipation && (
                     <div style={styles.selectedParticipationBox}>
                       <strong>{activeChildName} 참여 상세</strong>
                       <span>
-                        이번 주 {selectedParticipation.weeklyActiveDays}일 · 누적{" "}
+                        오늘 {selectedParticipation.todayTotal}회 · 이번 주{" "}
+                        {selectedParticipation.weeklyActiveDays}일 · 누적{" "}
                         {selectedParticipation.total}회 · 마지막{" "}
                         {selectedParticipation.lastDateText}
                       </span>
@@ -8232,10 +9147,20 @@ export default function App() {
                       </h3>
                     </div>
 
-                    <span style={styles.attentionCount}>
-                      기록 {activeChildRecords.length}개 · 질문{" "}
-                      {activeChildMessages.length}개
-                    </span>
+                    <div style={styles.reportHeaderActions}>
+                      <span style={styles.attentionCount}>
+                        기록 {activeChildRecords.length}개 · 질문{" "}
+                        {activeChildMessages.length}개
+                      </span>
+                      <button
+                        type="button"
+                        style={styles.compactExportButton}
+                        onClick={exportSelectedChildReport}
+                        disabled={!hasSelectedChild}
+                      >
+                        분석 저장
+                      </button>
+                    </div>
                   </div>
 
                   {hasSelectedChild ? (
@@ -12517,6 +13442,10 @@ const styles: Record<string, CSSProperties> = {
     fontSize: "15px",
     fontWeight: 900,
     wordBreak: "keep-all",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "10px",
   },
 
   input: {
@@ -12697,5 +13626,160 @@ const styles: Record<string, CSSProperties> = {
     fontSize: "15px",
     fontWeight: 900,
     cursor: "pointer",
+  },
+
+  aiUsageSummary: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "7px 14px",
+    marginTop: "9px",
+    color: "#45633C",
+    fontSize: "12px",
+    fontWeight: 800,
+  },
+
+  chatRetryButton: {
+    flexShrink: 0,
+    border: "1px solid #D2A84F",
+    background: "#FFFFFF",
+    color: "#5B4A21",
+    borderRadius: "8px",
+    padding: "7px 11px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  analysisAnswerTestButton: {
+    width: "100%",
+    border: "1px solid #C9DDBB",
+    background: "#EEF6E8",
+    color: "#31582F",
+    borderRadius: "8px",
+    padding: "11px 8px",
+    fontSize: "14px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  reportHeaderActions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: "8px",
+  },
+
+  compactExportButton: {
+    border: "1px solid #C9DDBB",
+    background: "#F3F8EF",
+    color: "#31582F",
+    borderRadius: "8px",
+    padding: "8px 11px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  todayParticipationSummary: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    border: "1px solid #D8E4CD",
+    background: "#F6FAF2",
+    borderRadius: "8px",
+    marginBottom: "10px",
+    overflow: "hidden",
+  },
+
+  todaySummaryItem: {
+    minWidth: 0,
+    padding: "10px 12px",
+    borderRight: "1px solid #D8E4CD",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "8px",
+    color: "#526A46",
+    fontSize: "13px",
+    fontWeight: 850,
+  },
+
+  todaySummaryAlert: {
+    minWidth: 0,
+    padding: "10px 12px",
+    background: "#FFF4D8",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "8px",
+    color: "#78571C",
+    fontSize: "13px",
+    fontWeight: 850,
+  },
+
+  answerTestScoreBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    color: "#31582F",
+    fontSize: "17px",
+    fontWeight: 950,
+  },
+
+  answerTestFilters: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "7px",
+    marginBottom: "10px",
+  },
+
+  answerTestFilter: {
+    border: "1px solid #D9D1B8",
+    background: "#FFFFFF",
+    color: "#526A46",
+    borderRadius: "8px",
+    padding: "7px 11px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  answerTestFilterActive: {
+    border: "1px solid #7AA465",
+    background: "#EAF3E2",
+    color: "#31582F",
+    borderRadius: "8px",
+    padding: "7px 11px",
+    fontSize: "12px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  answerTestCheckPass: {
+    color: "#2F6A37",
+    background: "#E5F3E4",
+    borderRadius: "6px",
+    padding: "4px 7px",
+    fontSize: "11px",
+    fontWeight: 900,
+  },
+
+  answerTestCheckWarning: {
+    color: "#8A5C1D",
+    background: "#FFF1D6",
+    borderRadius: "6px",
+    padding: "4px 7px",
+    fontSize: "11px",
+    fontWeight: 900,
+  },
+
+  photoQualityRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    color: "#5E704F",
+    fontSize: "12px",
+    fontWeight: 850,
   },
 };
