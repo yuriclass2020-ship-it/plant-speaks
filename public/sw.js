@@ -1,4 +1,4 @@
-const CACHE_NAME = "plant-speaks-pwa-v8";
+const CACHE_NAME = "plant-speaks-pwa-v9";
 
 const APP_SHELL = [
   "/",

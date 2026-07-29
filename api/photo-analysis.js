@@ -1,6 +1,12 @@
 import OpenAI from 'openai';
+import {
+  authorizeAiRequest,
+  getServerOpenAiApiKey,
+} from '../lib/api-security.js';
 
 const DEFAULT_MODEL = 'gpt-5-mini';
+const SUPPORTED_IMAGE_DATA_URL =
+  /^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/=\s]+$/i;
 const PHOTO_ANALYSIS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -50,16 +56,9 @@ const PHOTO_ANALYSIS_SCHEMA = {
   ],
 };
 
-function getOpenAiApiKey(req) {
-  const headerKey = req.headers['x-openai-api-key'];
-  const bodyKey = req.body?.openAiApiKey;
-  const key = typeof headerKey === 'string' ? headerKey : bodyKey;
-  return typeof key === 'string' ? key.trim() : '';
-}
-
-function cleanText(value, fallback = '') {
+function cleanText(value, fallback = '', maxLength = 500) {
   const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
-  return text || fallback;
+  return (text || fallback).slice(0, maxLength);
 }
 
 function cleanEnum(value, allowed, fallback) {
@@ -227,20 +226,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  const {
-    plantName,
-    plantType,
-    imageData,
-    purpose = 'observation',
-    previousAnalysis,
-    previousImageData,
-    previousDate,
-  } = req.body ?? {};
-
+  const { imageData } = req.body ?? {};
   if (
     !imageData ||
     typeof imageData !== 'string' ||
-    !imageData.startsWith('data:image/')
+    !SUPPORTED_IMAGE_DATA_URL.test(imageData)
   ) {
     return res.status(400).json({
       ok: false,
@@ -248,21 +238,36 @@ export default async function handler(req, res) {
     });
   }
 
-  const apiKey = getOpenAiApiKey(req);
+  const authorization = await authorizeAiRequest(req, res, {
+    kind: 'photo',
+    maxBodyBytes: 5 * 1024 * 1024,
+  });
+  if (!authorization) return;
+
+  const {
+    plantName,
+    plantType,
+    purpose = 'observation',
+    previousAnalysis,
+    previousImageData,
+    previousDate,
+  } = req.body ?? {};
+
+  const apiKey = getServerOpenAiApiKey();
   if (!apiKey) {
-    return res.status(400).json({
+    return res.status(503).json({
       ok: false,
-      error: 'OpenAI API 키가 필요해요.',
+      error: 'AI 연결을 준비하고 있어요.',
     });
   }
 
   const safeName =
     typeof plantName === 'string' && plantName.trim()
-      ? plantName.trim()
+      ? plantName.trim().slice(0, 80)
       : '새 식물';
   const safeType =
     typeof plantType === 'string' && plantType.trim()
-      ? plantType.trim()
+      ? plantType.trim().slice(0, 100)
       : '종류 미확인';
 
   try {
@@ -282,7 +287,7 @@ export default async function handler(req, res) {
 
     if (
       typeof previousImageData === 'string' &&
-      previousImageData.startsWith('data:image/')
+      SUPPORTED_IMAGE_DATA_URL.test(previousImageData)
     ) {
       content.push({
         type: 'input_text',
@@ -322,6 +327,8 @@ export default async function handler(req, res) {
         effort: 'low',
       },
       max_output_tokens: 2400,
+      store: false,
+      safety_identifier: authorization.safetyIdentifier,
     });
 
     const responseText = getPhotoAnalysisResponseText(response);

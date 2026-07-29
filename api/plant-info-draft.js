@@ -1,13 +1,10 @@
 import OpenAI from 'openai';
+import {
+  authorizeAiRequest,
+  getServerOpenAiApiKey,
+} from '../lib/api-security.js';
 
 const DEFAULT_MODEL = 'gpt-5-mini';
-
-function getOpenAiApiKey(req) {
-  const headerKey = req.headers['x-openai-api-key'];
-  const bodyKey = req.body?.openAiApiKey;
-  const key = typeof headerKey === 'string' ? headerKey : bodyKey;
-  return typeof key === 'string' ? key.trim() : '';
-}
 
 function buildPrompt(plantType) {
   return [
@@ -62,14 +59,25 @@ export default async function handler(req, res) {
   }
 
   const { plantType } = req.body ?? {};
-  if (!plantType || typeof plantType !== 'string' || !plantType.trim()) {
+  if (
+    !plantType ||
+    typeof plantType !== 'string' ||
+    !plantType.trim() ||
+    plantType.trim().length > 100
+  ) {
     return res.status(400).json({ ok: false, error: 'plantType is required' });
   }
 
+  const authorization = await authorizeAiRequest(req, res, {
+    kind: 'draft',
+    maxBodyBytes: 4 * 1024,
+  });
+  if (!authorization) return;
+
   try {
-    const apiKey = getOpenAiApiKey(req);
+    const apiKey = getServerOpenAiApiKey();
     if (!apiKey) {
-      return res.status(400).json({ ok: false, error: 'OpenAI API 키가 필요합니다.' });
+      return res.status(503).json({ ok: false, error: 'AI 연결을 준비하고 있어요.' });
     }
 
     const openai = new OpenAI({ apiKey });
@@ -82,6 +90,8 @@ export default async function handler(req, res) {
         },
       },
       max_output_tokens: 1800,
+      store: false,
+      safety_identifier: authorization.safetyIdentifier,
     });
 
     const raw = response.output_text ?? '';

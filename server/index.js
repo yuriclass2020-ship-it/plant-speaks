@@ -49,7 +49,7 @@ loadLocalEnv();
 const app = express();
 const PORT = 8787;
 
-app.use(cors());
+app.use(cors({ origin: ['http://localhost:5175', 'http://127.0.0.1:5175'] }));
 app.use(express.json({ limit: '15mb' }));
 
 const ttsCache = new Map();
@@ -366,22 +366,14 @@ function buildTtsInstructions() {
   ].join(' ');
 }
 
-function getOpenAIClient(apiKey) {
-  const effectiveApiKey = String(apiKey?.trim() || process.env.OPENAI_API_KEY || '').trim();
+function getOpenAIClient() {
+  const effectiveApiKey = String(process.env.OPENAI_API_KEY || '').trim();
 
   if (!effectiveApiKey) {
     throw new Error('OPENAI_API_KEY is missing');
   }
 
   return new OpenAI({ apiKey: effectiveApiKey });
-}
-
-function getRequestOpenAiApiKey(req) {
-  const headerKey = req.get('x-openai-api-key');
-  const bodyKey = req.body?.openAiApiKey;
-  const key = typeof headerKey === 'string' && headerKey.trim() ? headerKey : bodyKey;
-
-  return typeof key === 'string' ? key.trim() : '';
 }
 
 function createFallbackPlantInfoDraft(plantType) {
@@ -743,8 +735,8 @@ function parsePhotoAnalysisJson(text) {
   return parsePlantInfoDraftJson(text);
 }
 
-async function generatePhotoAnalysis({ plantName, plantType, imageData, openAiApiKey }) {
-  const openai = getOpenAIClient(openAiApiKey);
+async function generatePhotoAnalysis({ plantName, plantType, imageData }) {
+  const openai = getOpenAIClient();
   const model = process.env.OPENAI_PHOTO_ANALYSIS_MODEL || DEFAULT_PHOTO_ANALYSIS_MODEL;
 
   const response = await withTimeout(
@@ -1870,8 +1862,8 @@ function createLocalChatAnswer({ question, plantName, plantType, teacherInfo }) 
   return null;
 }
 
-async function generateChatAnswer(context, openAiApiKey) {
-  const openai = getOpenAIClient(openAiApiKey);
+async function generateChatAnswer(context) {
+  const openai = getOpenAIClient();
   const model = process.env.OPENAI_CHAT_ANSWER_MODEL || DEFAULT_CHAT_ANSWER_MODEL;
 
   const response = await withTimeout(
@@ -1903,8 +1895,8 @@ async function withTimeout(promise, timeoutMs, label) {
   }
 }
 
-async function generatePlantInfoDraftOnce(plantType, model, openAiApiKey) {
-  const openai = getOpenAIClient(openAiApiKey);
+async function generatePlantInfoDraftOnce(plantType, model) {
+  const openai = getOpenAIClient();
 
   const response = await withTimeout(
     openai.responses.create({
@@ -1923,14 +1915,14 @@ async function generatePlantInfoDraftOnce(plantType, model, openAiApiKey) {
   return parsePlantInfoDraftJson(response.output_text);
 }
 
-async function generatePlantInfoDraft(plantType, openAiApiKey) {
+async function generatePlantInfoDraft(plantType) {
   const models = getPlantInfoModels();
   const errors = [];
 
   for (const model of models) {
     for (let attempt = 1; attempt <= PLANT_INFO_RETRY_COUNT; attempt += 1) {
       try {
-        return await generatePlantInfoDraftOnce(plantType, model, openAiApiKey);
+        return await generatePlantInfoDraftOnce(plantType, model);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'unknown OpenAI error';
@@ -1968,8 +1960,8 @@ async function writeTtsAudioBufferToDisk(cacheKey, buffer) {
   await writeFile(getTtsCacheFilePath(cacheKey), buffer);
 }
 
-async function generateTtsAudioBuffer(text, openAiApiKey) {
-  const openai = getOpenAIClient(openAiApiKey);
+async function generateTtsAudioBuffer(text) {
+  const openai = getOpenAIClient();
 
   const response = await openai.audio.speech.create({
     model: 'gpt-4o-mini-tts',
@@ -2073,8 +2065,6 @@ app.post('/api/plant-info-draft', async (req, res) => {
   const normalizedPlantType = plantType.trim();
   const cacheKey = normalizedPlantType.toLowerCase();
   const localDraft = findLocalPlantInfoDraft(normalizedPlantType);
-  const requestApiKey = getRequestOpenAiApiKey(req);
-
   if (localDraft) {
     return res.json({
       ok: true,
@@ -2109,7 +2099,7 @@ app.post('/api/plant-info-draft', async (req, res) => {
   incrementUsage('draft');
 
   try {
-    const rawDraft = await generatePlantInfoDraft(normalizedPlantType, requestApiKey);
+    const rawDraft = await generatePlantInfoDraft(normalizedPlantType);
     const draft = sanitizePlantInfoDraft(rawDraft, normalizedPlantType);
 
     plantInfoDraftCache.set(cacheKey, draft);
@@ -2162,8 +2152,6 @@ app.post('/api/photo-analysis', async (req, res) => {
       ? plantType.trim()
       : '종류를 아직 모르는 식물';
   const cacheKey = `${PHOTO_ANALYSIS_STYLE_VERSION}:${safePlantName}:${safePlantType}:${imageData.length}:${imageData.slice(-256)}`;
-  const requestApiKey = getRequestOpenAiApiKey(req);
-
   if (photoAnalysisCache.has(cacheKey)) {
     return res.json({
       ok: true,
@@ -2202,7 +2190,6 @@ app.post('/api/photo-analysis', async (req, res) => {
       plantName: safePlantName,
       plantType: safePlantType,
       imageData,
-      openAiApiKey: requestApiKey,
     });
 
     photoAnalysisCache.set(cacheKey, analysis);
@@ -2260,7 +2247,6 @@ app.post('/api/chat-answer', async (req, res) => {
     typeof plantType === 'string' && plantType.trim()
       ? plantType.trim()
       : '종류를 아직 모르는 식물';
-  const requestApiKey = getRequestOpenAiApiKey(req);
   const localAnswer = isRawBeanQuestion(
     question,
     safePlantName,
@@ -2309,8 +2295,7 @@ app.post('/api/chat-answer', async (req, res) => {
           ? recentChatMessages.slice(-4)
           : [],
         latestPhotoAnalysis,
-      },
-      requestApiKey
+      }
     );
 
     return res.json({
@@ -2387,8 +2372,7 @@ app.post('/api/tts', async (req, res) => {
 
     incrementUsage('tts');
 
-    const requestApiKey = getRequestOpenAiApiKey(req);
-    const audioBuffer = await generateTtsAudioBuffer(normalizedText, requestApiKey);
+    const audioBuffer = await generateTtsAudioBuffer(normalizedText);
     const audioBase64 = audioBuffer.toString('base64');
 
     await writeTtsAudioBufferToDisk(cacheKey, audioBuffer);
@@ -2415,6 +2399,6 @@ app.post('/api/tts', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`TTS server listening on http://localhost:${PORT}`);
 });

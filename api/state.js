@@ -1,6 +1,11 @@
-// 상태는 브라우저 localStorage에 저장됨
-// 이 엔드포인트는 하위 호환성을 위해 유지 (항상 성공 반환)
-export default async function handler(req, res) {
-  // GET, POST, PUT 모두 성공 반환
-  return res.json({ ok: true, state: null });
+import { applyApiSecurityHeaders } from '../lib/api-security.js';
+
+export default async function handler(_req, res) {
+  applyApiSecurityHeaders(res);
+  return res.status(410).json({
+    ok: false,
+    code: 'LOCAL_STATE_ONLY',
+    error: '관찰 기록은 개인정보 보호를 위해 이 기기에만 저장돼요.',
+    state: null,
+  });
 }

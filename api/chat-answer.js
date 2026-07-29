@@ -1,16 +1,26 @@
 import OpenAI from 'openai';
+import {
+  authorizeAiRequest,
+  getServerOpenAiApiKey,
+} from '../lib/api-security.js';
 
 const DEFAULT_MODEL = 'gpt-4.1-mini';
 
-function getOpenAiApiKey(req) {
-  const headerKey = req.headers['x-openai-api-key'];
-  const bodyKey = req.body?.openAiApiKey;
-  const key = typeof headerKey === 'string' ? headerKey : bodyKey;
-  return typeof key === 'string' ? key.trim() : '';
+function cleanText(value, maxLength = 500) {
+  const text =
+    typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+  return text.slice(0, maxLength);
 }
 
-function cleanText(value) {
-  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+function compactJson(value, maxLength) {
+  try {
+    const serialized = JSON.stringify(value ?? {});
+    return serialized.length <= maxLength
+      ? serialized
+      : `${serialized.slice(0, maxLength)}...[일부 생략]`;
+  } catch {
+    return '{}';
+  }
 }
 
 function sanitize(text, fallbackAnswer) {
@@ -33,15 +43,15 @@ function compactRecentRecords(recentRecords) {
 
   return recentRecords.slice(-5).map((record) => ({
     type: record?.type,
-    title: cleanText(record?.title),
-    date: cleanText(record?.date),
-    firstObservation: cleanText(record?.firstValue),
-    secondObservation: cleanText(record?.secondValue),
-    memo: cleanText(record?.memo),
-    photoSummary: cleanText(record?.photoAnalysis?.summary),
-    photoVisibleDetails: cleanText(record?.photoAnalysis?.visibleDetails),
-    photoComparison: cleanText(record?.photoAnalysis?.comparison),
-    photoDialogueContext: cleanText(record?.photoAnalysis?.dialogueContext),
+    title: cleanText(record?.title, 100),
+    date: cleanText(record?.date, 40),
+    firstObservation: cleanText(record?.firstValue, 160),
+    secondObservation: cleanText(record?.secondValue, 160),
+    memo: cleanText(record?.memo, 300),
+    photoSummary: cleanText(record?.photoAnalysis?.summary, 300),
+    photoVisibleDetails: cleanText(record?.photoAnalysis?.visibleDetails, 300),
+    photoComparison: cleanText(record?.photoAnalysis?.comparison, 300),
+    photoDialogueContext: cleanText(record?.photoAnalysis?.dialogueContext, 300),
   }));
 }
 
@@ -49,8 +59,8 @@ function compactRecentChatMessages(recentChatMessages) {
   if (!Array.isArray(recentChatMessages)) return [];
 
   return recentChatMessages.slice(-6).map((message) => ({
-    child: cleanText(message?.question),
-    plant: cleanText(message?.answer),
+    child: cleanText(message?.question, 300),
+    plant: cleanText(message?.answer, 500),
   }));
 }
 
@@ -81,19 +91,19 @@ function buildPrompt({
 10. 맛이나 먹기 질문은 물은 맛에 먼저 답하되, 선생님 확인 전에는 먹지 않도록 안내해.
 
 [등록된 식물 정보]
-${JSON.stringify(teacherInfo ?? {})}
+${compactJson(teacherInfo, 4000)}
 
 [오늘 돌보기]
-${JSON.stringify(careState ?? {})}
+${compactJson(careState, 1500)}
 
 [최근 관찰]
-${JSON.stringify(compactRecentRecords(recentRecords))}
+${compactJson(compactRecentRecords(recentRecords), 6000)}
 
 [최신 사진 분석]
-${JSON.stringify(latestPhotoAnalysis ?? {})}
+${compactJson(latestPhotoAnalysis, 2500)}
 
 [직전 대화]
-${JSON.stringify(compactRecentChatMessages(recentChatMessages))}
+${compactJson(compactRecentChatMessages(recentChatMessages), 5000)}
 
 [아이의 현재 말]
 ${question}
@@ -109,8 +119,25 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
+  const { question } = req.body ?? {};
+  if (
+    !question ||
+    typeof question !== 'string' ||
+    question.trim().length > 300
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: '질문을 확인하지 못했어요.',
+    });
+  }
+
+  const authorization = await authorizeAiRequest(req, res, {
+    kind: 'chat',
+    maxBodyBytes: 32 * 1024,
+  });
+  if (!authorization) return;
+
   const {
-    question,
     fallbackAnswer,
     plantName,
     plantType,
@@ -121,24 +148,17 @@ export default async function handler(req, res) {
     latestPhotoAnalysis,
   } = req.body ?? {};
 
-  if (!question || typeof question !== 'string') {
-    return res.status(400).json({
-      ok: false,
-      error: '질문을 확인하지 못했어요.',
-    });
-  }
-
   const safeFallback =
     cleanText(fallbackAnswer) ||
     '그 질문은 지금 바로 알기 어려워요. 내 잎과 흙을 함께 살펴볼래?';
   const safeName = cleanText(plantName) || '이 식물';
   const safeType = cleanText(plantType) || '종류 미확인 식물';
-  const apiKey = getOpenAiApiKey(req);
+  const apiKey = getServerOpenAiApiKey();
 
   if (!apiKey) {
-    return res.status(400).json({
+    return res.status(503).json({
       ok: false,
-      error: 'OpenAI API 키가 필요해요.',
+      error: 'AI 연결을 준비하고 있어요.',
     });
   }
 
@@ -162,6 +182,8 @@ export default async function handler(req, res) {
         latestPhotoAnalysis,
       }),
       max_output_tokens: 220,
+      store: false,
+      safety_identifier: authorization.safetyIdentifier,
     });
 
     return res.json({

@@ -187,13 +187,24 @@ type DraftStatus = {
   text: string;
 };
 
+type SessionStatus = "checking" | "required" | "authenticated" | "unavailable";
+
+type PublicSessionInfo = {
+  ok: boolean;
+  available: boolean;
+  authenticated: boolean;
+  accessCodeRequired: boolean;
+  policyVersion?: string;
+  unavailableReason?: string;
+  error?: string;
+};
+
 const CARE_STORAGE_KEY = "plant-speaks-care-state-v1";
 const PLANT_STORAGE_KEY = "plant-speaks-plant-v1";
 const RECORD_STORAGE_KEY = "plant-speaks-observation-records-v1";
 const CHAT_STORAGE_KEY = "plant-speaks-chat-messages-v1";
 const CHILD_STORAGE_KEY = "plant-speaks-current-child-v1";
 const CHILD_ROSTER_STORAGE_KEY = "plant-speaks-child-roster-v1";
-const TEST_ACCESS_CODE_STORAGE_KEY = "plant-speaks-test-access-code-v1";
 const AI_CHAT_CACHE_STORAGE_KEY = "plant-speaks-ai-chat-cache-v3";
 const AI_CHAT_USAGE_STORAGE_KEY = "plant-speaks-ai-chat-usage-v1";
 const AI_FEATURE_USAGE_STORAGE_KEY = "plant-speaks-ai-feature-usage-v1";
@@ -210,12 +221,12 @@ const DAILY_AI_TTS_LIMIT = 30;
 const AUTO_BACKUP_DATABASE_NAME = "plant-speaks-auto-backup-v1";
 const AUTO_BACKUP_STORE_NAME = "snapshots";
 const MAX_AUTO_BACKUPS = 3;
-const API_STATE_URL = "/api/state";
+const API_SESSION_URL = "/api/session";
 const API_PLANT_INFO_DRAFT_URL = "/api/plant-info-draft";
 const API_TTS_URL = "/api/tts";
 const API_PHOTO_ANALYSIS_URL = "/api/photo-analysis";
 const API_CHAT_ANSWER_URL = "/api/chat-answer";
-const OPENAI_API_KEY_STORAGE_KEY = "plant-speaks-openai-api-key";
+const SESSION_EXPIRED_EVENT = "plant-talk-session-expired";
 const CARE_REACTION_SPEECH: Record<"waterCount" | "sunCount", string> = {
   waterCount: "고마워. 시원해!",
   sunCount: "따뜻해. 고마워!",
@@ -230,36 +241,50 @@ const QUICK_CHAT_QUESTIONS = [
   "꽃도 펴?",
 ];
 
-function getTestAccessHeaders(): HeadersInit {
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
-
-  if (typeof window !== "undefined") {
-    const testAccessCode =
-      window.localStorage.getItem(TEST_ACCESS_CODE_STORAGE_KEY)?.trim() ?? "";
-
-    if (testAccessCode) {
-      headers["x-test-access-code"] = testAccessCode;
-    }
-  }
-
-  return headers;
+function getApiHeaders(): HeadersInit {
+  return { "Content-Type": "application/json" };
 }
 
-function getApiHeaders(openAiApiKey?: string): HeadersInit {
-  const headers: HeadersInit = { ...getTestAccessHeaders() };
-
-  if (openAiApiKey?.trim()) {
-    headers["x-openai-api-key"] = openAiApiKey.trim();
-  }
-
-  return headers;
-}
-
-function clearTestAccessCodeIfNeeded(response: Response) {
+function handleSecureApiResponse(response: Response) {
   if (response.status === 401 && typeof window !== "undefined") {
-    window.localStorage.removeItem(TEST_ACCESS_CODE_STORAGE_KEY);
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+}
+
+async function loadPublicSession(): Promise<PublicSessionInfo> {
+  const response = await fetch(API_SESSION_URL, {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  const data = (await response.json()) as PublicSessionInfo;
+  return {
+    ...data,
+    available: Boolean(data.available),
+    authenticated: response.ok && Boolean(data.authenticated),
+    accessCodeRequired: Boolean(data.accessCodeRequired),
+  };
+}
+
+async function createPublicSession(accessCode: string) {
+  const response = await fetch(API_SESSION_URL, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      consent: true,
+      adultConfirmed: true,
+      accessCode: accessCode.trim(),
+    }),
+  });
+  const data = (await response.json().catch(() => null)) as {
+    ok?: boolean;
+    authenticated?: boolean;
+    error?: string;
+  } | null;
+
+  if (!response.ok || !data?.ok || !data.authenticated) {
+    throw new Error(data?.error || "안전한 사용 세션을 시작하지 못했어요.");
   }
 }
 
@@ -408,52 +433,21 @@ function createCareStateFromTeacherInfo(
 }
 
 async function loadStateFromDb(): Promise<DbAppState | null> {
-  const response = await fetch(API_STATE_URL, {
-    headers: getTestAccessHeaders(),
-  });
-  const data = (await response.json()) as {
-    ok: boolean;
-    state?: DbAppState;
-  };
-
-  clearTestAccessCodeIfNeeded(response);
-
-  if (!response.ok || !data.ok || !data.state) {
-    return null;
-  }
-
-  return data.state;
+  return null;
 }
 
-async function saveStateToDb(state: DbAppState) {
-  const response = await fetch(API_STATE_URL, {
-    method: "PUT",
-    headers: getTestAccessHeaders(),
-    body: JSON.stringify({ state }),
-  });
-  const data = (await response.json().catch(() => null)) as {
-    ok?: boolean;
-    error?: string;
-  } | null;
-
-  clearTestAccessCodeIfNeeded(response);
-
-  if (!response.ok || !data?.ok) {
-    throw new Error(data?.error || "저장하지 못했어요.");
-  }
+async function saveStateToDb(_state: DbAppState) {
+  // 공개 버전의 관찰 데이터는 서버로 보내지 않고 이 기기에만 저장한다.
 }
 
-async function loadPlantInfoDraftFromServer(
-  plantType: string,
-  openAiApiKey?: string
-): Promise<{
+async function loadPlantInfoDraftFromServer(plantType: string): Promise<{
   draft: TeacherPlantInfo;
   source?: string;
   warning?: string;
 } | null> {
   const response = await fetch(API_PLANT_INFO_DRAFT_URL, {
     method: "POST",
-    headers: getApiHeaders(openAiApiKey),
+    headers: getApiHeaders(),
     body: JSON.stringify({ plantType }),
   });
   const data = (await response.json()) as {
@@ -463,7 +457,7 @@ async function loadPlantInfoDraftFromServer(
     warning?: string;
   };
 
-  clearTestAccessCodeIfNeeded(response);
+  handleSecureApiResponse(response);
 
   if (!response.ok || !data.ok || !data.draft) {
     return null;
@@ -484,7 +478,6 @@ async function loadPhotoAnalysisFromServer({
   previousAnalysis,
   previousImageData,
   previousDate,
-  openAiApiKey,
 }: {
   plantName: string;
   plantType: string;
@@ -493,11 +486,10 @@ async function loadPhotoAnalysisFromServer({
   previousAnalysis?: PhotoAnalysis;
   previousImageData?: string;
   previousDate?: string;
-  openAiApiKey?: string;
 }): Promise<PhotoAnalysis> {
   const response = await fetch(API_PHOTO_ANALYSIS_URL, {
     method: "POST",
-    headers: getApiHeaders(openAiApiKey),
+    headers: getApiHeaders(),
     body: JSON.stringify({
       plantName,
       plantType,
@@ -514,7 +506,7 @@ async function loadPhotoAnalysisFromServer({
     error?: string;
   };
 
-  clearTestAccessCodeIfNeeded(response);
+  handleSecureApiResponse(response);
 
   if (!response.ok || !data.ok || !data.analysis) {
     throw new Error(data.error || "사진을 살펴보지 못했어요.");
@@ -533,7 +525,6 @@ async function loadChatAnswerFromServer({
   recentRecords,
   recentChatMessages,
   latestPhotoAnalysis,
-  openAiApiKey,
 }: {
   question: string;
   fallbackAnswer: string;
@@ -544,11 +535,10 @@ async function loadChatAnswerFromServer({
   recentRecords: ObservationRecord[];
   recentChatMessages: ChatMessage[];
   latestPhotoAnalysis?: PhotoAnalysis;
-  openAiApiKey?: string;
 }): Promise<string> {
   const response = await fetch(API_CHAT_ANSWER_URL, {
     method: "POST",
-    headers: getApiHeaders(openAiApiKey),
+    headers: getApiHeaders(),
     body: JSON.stringify({
       question,
       fallbackAnswer,
@@ -585,7 +575,7 @@ async function loadChatAnswerFromServer({
     warning?: string;
   };
 
-  clearTestAccessCodeIfNeeded(response);
+  handleSecureApiResponse(response);
 
   if (!response.ok || !data.ok || !data.answer) {
     throw new Error(data.error || "AI 답변을 만들지 못했어요.");
@@ -1430,10 +1420,10 @@ function playDingDongSound() {
   );
 }
 
-async function requestTtsObjectUrl(text: string, openAiApiKey?: string) {
+async function requestTtsObjectUrl(text: string) {
   const response = await fetch(API_TTS_URL, {
     method: "POST",
-    headers: getApiHeaders(openAiApiKey),
+    headers: getApiHeaders(),
     body: JSON.stringify({ text }),
   });
 
@@ -1443,7 +1433,7 @@ async function requestTtsObjectUrl(text: string, openAiApiKey?: string) {
     error?: string;
   };
 
-  clearTestAccessCodeIfNeeded(response);
+  handleSecureApiResponse(response);
 
   if (!response.ok || !data.ok || !data.audioBase64) {
     throw new Error(data.error || "음성을 만들지 못했어요.");
@@ -2086,25 +2076,12 @@ function normalizeAiTtsUsage(
   };
 }
 
-function createAiUsageProfileId(apiKey: string) {
-  const normalizedKey = apiKey.trim();
-  if (!normalizedKey) return "no-key";
-
-  let hash = 2166136261;
-  for (let index = 0; index < normalizedKey.length; index += 1) {
-    hash ^= normalizedKey.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-
-  return `key-${(hash >>> 0).toString(36)}`;
-}
-
-function loadAiUsageProfile(apiKey: string, dateKey: string) {
+function loadAiUsageProfile(dateKey: string) {
   try {
     const savedProfiles = JSON.parse(
       localStorage.getItem(AI_USAGE_BY_KEY_STORAGE_KEY) || "{}"
     ) as Record<string, Partial<AiUsageProfile>>;
-    const savedProfile = savedProfiles[createAiUsageProfileId(apiKey)];
+    const savedProfile = savedProfiles["public-session"];
     if (!savedProfile) return null;
 
     return {
@@ -2117,17 +2094,14 @@ function loadAiUsageProfile(apiKey: string, dateKey: string) {
   }
 }
 
-function saveAiUsageProfile(
-  apiKey: string,
-  profile: AiUsageProfile
-) {
+function saveAiUsageProfile(profile: AiUsageProfile) {
   try {
     const savedProfiles = JSON.parse(
       localStorage.getItem(AI_USAGE_BY_KEY_STORAGE_KEY) || "{}"
     ) as Record<string, AiUsageProfile>;
     const entries = Object.entries({
       ...savedProfiles,
-      [createAiUsageProfileId(apiKey)]: profile,
+      ["public-session"]: profile,
     }).slice(-12);
 
     localStorage.setItem(
@@ -2138,7 +2112,7 @@ function saveAiUsageProfile(
     localStorage.setItem(
       AI_USAGE_BY_KEY_STORAGE_KEY,
       JSON.stringify({
-        [createAiUsageProfileId(apiKey)]: profile,
+        ["public-session"]: profile,
       })
     );
   }
@@ -2407,10 +2381,14 @@ export default function App() {
   const [photoAnalysisCache, setPhotoAnalysisCache] = useState<
     Record<string, PhotoAnalysis>
   >({});
-  const [openAiApiKey, setOpenAiApiKey] = useState("");
-  const [openAiApiKeyDraft, setOpenAiApiKeyDraft] = useState("");
-  const [openAiApiKeyError, setOpenAiApiKeyError] = useState("");
-  const [showOpenAiKeyPanel, setShowOpenAiKeyPanel] = useState(false);
+  const [sessionStatus, setSessionStatus] =
+    useState<SessionStatus>("checking");
+  const [sessionAccessCode, setSessionAccessCode] = useState("");
+  const [sessionConsent, setSessionConsent] = useState(false);
+  const [sessionError, setSessionError] = useState("");
+  const [isSessionStarting, setIsSessionStarting] = useState(false);
+  const [accessCodeRequired, setAccessCodeRequired] = useState(false);
+  const [showAiUsagePanel, setShowAiUsagePanel] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState("");
   const [failedChatRequest, setFailedChatRequest] =
@@ -2605,7 +2583,7 @@ export default function App() {
     };
     let localAiTtsUsage: AiTtsUsage = { dateKey: todayKey, count: 0 };
     let localPhotoAnalysisCache: Record<string, PhotoAnalysis> = {};
-    let localOpenAiApiKey = "";
+    localStorage.removeItem("plant-speaks-openai-api-key");
 
     const savedCareState = localStorage.getItem(CARE_STORAGE_KEY);
 
@@ -2729,15 +2707,7 @@ export default function App() {
       }
     }
 
-    const savedOpenAiApiKey = localStorage.getItem(OPENAI_API_KEY_STORAGE_KEY);
-    if (savedOpenAiApiKey) {
-      localOpenAiApiKey = savedOpenAiApiKey;
-    }
-
-    const savedUsageProfile = loadAiUsageProfile(
-      localOpenAiApiKey,
-      todayKey
-    );
+    const savedUsageProfile = loadAiUsageProfile(todayKey);
     if (savedUsageProfile) {
       localAiChatUsage = savedUsageProfile.chat;
       localAiFeatureUsage = savedUsageProfile.features;
@@ -2810,7 +2780,6 @@ export default function App() {
       setTeacherClassificationInfo(
         nextState.plant?.teacherInfo?.classificationInfo ?? ""
       );
-      setOpenAiApiKey(localOpenAiApiKey);
       setTeacherNameStoryInfo(nextState.plant?.teacherInfo?.nameStoryInfo ?? "");
       setTeacherEdibleInfo(nextState.plant?.teacherInfo?.edibleInfo ?? "");
       setTeacherFlowerInfo(nextState.plant?.teacherInfo?.flowerInfo ?? "");
@@ -2876,8 +2845,6 @@ export default function App() {
       setAiFeatureUsage(localAiFeatureUsage);
       setAiTtsUsage(localAiTtsUsage);
       setPhotoAnalysisCache(localPhotoAnalysisCache);
-      setOpenAiApiKey(localOpenAiApiKey);
-      setOpenAiApiKeyDraft(localOpenAiApiKey);
       setIsStateLoaded(true);
 
       try {
@@ -2924,15 +2891,6 @@ export default function App() {
   }, [currentChildName]);
 
   useEffect(() => {
-    if (openAiApiKey.trim()) {
-      localStorage.setItem(OPENAI_API_KEY_STORAGE_KEY, openAiApiKey.trim());
-      setOpenAiApiKeyError("");
-    } else {
-      localStorage.removeItem(OPENAI_API_KEY_STORAGE_KEY);
-    }
-  }, [openAiApiKey]);
-
-  useEffect(() => {
     if (screen !== "chat") return;
 
     const scrollToLatestChat = () => {
@@ -2972,6 +2930,52 @@ export default function App() {
       window.speechSynthesis.onvoiceschanged = null;
       window.speechSynthesis.cancel();
     };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (import.meta.env.DEV) {
+      setSessionStatus("authenticated");
+      return;
+    }
+
+    loadPublicSession()
+      .then((session) => {
+        if (!isMounted) return;
+        setAccessCodeRequired(session.accessCodeRequired);
+        setSessionStatus(
+          !session.available
+            ? "unavailable"
+            : session.authenticated
+              ? "authenticated"
+              : "required"
+        );
+        setSessionError(
+          session.available ? "" : session.unavailableReason || "서비스 준비 중이에요."
+        );
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setSessionStatus("unavailable");
+        setSessionError("안전한 서비스 연결을 확인하지 못했어요.");
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setSessionConsent(false);
+      setSessionStatus("required");
+      setSessionError("안전한 사용 시간이 끝났어요. 안내를 다시 확인해 주세요.");
+    };
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
+    return () =>
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired);
   }, []);
 
   useEffect(() => {
@@ -3089,7 +3093,7 @@ export default function App() {
       AI_FEATURE_USAGE_STORAGE_KEY,
       JSON.stringify(aiFeatureUsage)
     );
-    saveAiUsageProfile(openAiApiKey, {
+    saveAiUsageProfile({
       chat: normalizeAiChatUsage(aiChatUsage, todayKey),
       features: normalizeAiFeatureUsage(aiFeatureUsage, todayKey),
       tts: normalizeAiTtsUsage(aiTtsUsage, todayKey),
@@ -3124,7 +3128,6 @@ export default function App() {
     isStateLoaded,
     knownChildNameSignature,
     photoAnalysisCache,
-    openAiApiKey,
     plant,
     records,
   ]);
@@ -4266,7 +4269,7 @@ export default function App() {
       };
     });
 
-    return loadPlantInfoDraftFromServer(normalizedPlantType, openAiApiKey);
+    return loadPlantInfoDraftFromServer(normalizedPlantType);
   };
 
   const requestPhotoAnalysis = async ({
@@ -4328,7 +4331,6 @@ export default function App() {
       previousAnalysis,
       previousImageData,
       previousDate,
-      openAiApiKey,
     });
 
     setPhotoAnalysisCache((prev) =>
@@ -4374,7 +4376,7 @@ export default function App() {
             result.source === "daily-limit"
               ? "오늘 AI 기본 정보 사용량을 모두 써서 안전 기본 초안을 넣었어요."
               : result.warning?.includes("OPENAI_API_KEY")
-                ? "API 키를 읽지 못해서 기본 초안을 넣었어요. server/.env 설정과 서버 재시작을 확인해 주세요."
+                ? "AI 연결을 확인하지 못해서 기본 초안을 넣었어요. 잠시 후 다시 확인해 주세요."
                 : "AI 초안 생성이 잠시 실패해서 안전 기본 초안을 넣었어요. 내용 확인 후 저장해 주세요.",
         });
       } else {
@@ -4449,7 +4451,7 @@ export default function App() {
         text:
           error instanceof Error
             ? error.message
-            : "사진을 분석하지 못했어요. OpenAI 키를 확인해 주세요.",
+            : "사진을 분석하지 못했어요. AI 연결을 확인해 주세요.",
       });
     } finally {
       setIsRegistrationPhotoAnalyzing(false);
@@ -4549,7 +4551,7 @@ export default function App() {
     if (!latestAutoBackup) return;
 
     const confirmed = window.confirm(
-      "현재 기록을 가장 최근 자동 백업으로 되돌릴까요? OpenAI 키는 그대로 유지돼요."
+      "현재 기록을 가장 최근 자동 백업으로 되돌릴까요?"
     );
     if (!confirmed) return;
 
@@ -4676,7 +4678,7 @@ export default function App() {
       }
 
       const confirmed = window.confirm(
-        "현재 기록을 백업 파일의 내용으로 바꿀까요? OpenAI 키는 그대로 유지돼요."
+        "현재 기록을 백업 파일의 내용으로 바꿀까요?"
       );
       if (!confirmed) return;
 
@@ -5874,7 +5876,6 @@ export default function App() {
         recentRecords: currentPlantRecords.slice(-6),
         recentChatMessages: activeChildMessages.slice(-6),
         latestPhotoAnalysis,
-        openAiApiKey,
       });
 
       setChatMessages((prev) =>
@@ -6011,12 +6012,6 @@ export default function App() {
       let audioUrl = audioUrlCacheRef.current[audioCacheKey];
 
       if (!audioUrl) {
-        if (!openAiApiKey.trim()) {
-          activeAudioIdRef.current = "";
-          speakWithBrowserVoice(speechText, messageId);
-          return;
-        }
-
         const currentTtsUsage = normalizeAiTtsUsage(aiTtsUsage, todayKey);
 
         if (currentTtsUsage.count >= DAILY_AI_TTS_LIMIT) {
@@ -6033,7 +6028,7 @@ export default function App() {
           const normalized = normalizeAiTtsUsage(prev, todayKey);
           return { ...normalized, count: normalized.count + 1 };
         });
-        audioUrl = await requestTtsObjectUrl(speechText, openAiApiKey);
+        audioUrl = await requestTtsObjectUrl(speechText);
         audioUrlCacheRef.current[audioCacheKey] = audioUrl;
       }
 
@@ -6382,7 +6377,7 @@ export default function App() {
       setPhotoAnalysisNotice(
         message.includes("오늘 사진 AI")
           ? message
-          : `${message} 서버와 API 키를 확인하고, 필요할 때 다시 눌러 주세요.`
+          : `${message} 안전한 AI 연결을 확인하고 다시 눌러 주세요.`
       );
     } finally {
       setAnalyzingPhotoRecordId("");
@@ -6451,39 +6446,8 @@ export default function App() {
     );
   };
 
-  const applyOpenAiApiKey = (nextApiKey: string) => {
-    const normalizedKey = nextApiKey.trim();
-
-    saveAiUsageProfile(openAiApiKey, {
-      chat: normalizeAiChatUsage(aiChatUsage, todayKey),
-      features: normalizeAiFeatureUsage(aiFeatureUsage, todayKey),
-      tts: normalizeAiTtsUsage(aiTtsUsage, todayKey),
-    });
-
-    if (normalizedKey !== openAiApiKey.trim()) {
-      const nextProfile = loadAiUsageProfile(normalizedKey, todayKey) ?? {
-        chat: { dateKey: todayKey, count: 0 },
-        features: {
-          dateKey: todayKey,
-          photoCount: 0,
-          draftCount: 0,
-          cacheHits: 0,
-        },
-        tts: { dateKey: todayKey, count: 0 },
-      };
-
-      setAiChatUsage(nextProfile.chat);
-      setAiFeatureUsage(nextProfile.features);
-      setAiTtsUsage(nextProfile.tts);
-    }
-
-    setOpenAiApiKey(normalizedKey);
-    setOpenAiApiKeyDraft(normalizedKey);
-    setOpenAiApiKeyError("");
-  };
-
-  const renderOpenAiKeyPanel = () => {
-    if (!showOpenAiKeyPanel) return null;
+  const renderAiUsagePanel = () => {
+    if (!showAiUsagePanel) return null;
 
     const currentChatUsage = normalizeAiChatUsage(aiChatUsage, todayKey);
     const currentFeatureUsage = normalizeAiFeatureUsage(
@@ -6522,15 +6486,15 @@ export default function App() {
         <div style={styles.apiKeyModalCard}>
           <div style={styles.apiKeyModalHeader}>
             <div>
-              <h2 style={styles.apiKeyModalTitle}>OpenAI API 키</h2>
+              <h2 style={styles.apiKeyModalTitle}>AI 사용량</h2>
               <p style={styles.apiKeyModalDesc}>
-                오픈AI 사용 요금은 입력한 키 소유자에게 청구됩니다.
+                서버에서 API 키와 사용 한도를 안전하게 관리해요.
               </p>
             </div>
             <button
               type="button"
               style={styles.apiKeyModalCloseButton}
-              onClick={() => setShowOpenAiKeyPanel(false)}
+              onClick={() => setShowAiUsagePanel(false)}
             >
               ×
             </button>
@@ -6581,60 +6545,17 @@ export default function App() {
             </div>
 
             <p style={styles.apiUsageNotice}>
-              같은 질문·사진·음성을 다시 사용하면 횟수에서 제외돼요.
+              같은 내용을 재사용하면 기기 횟수에서 제외될 수 있어요. 서버에서도
+              세션·접속 위치·서비스 전체 사용량을 별도로 제한해요.
             </p>
           </section>
 
-          <input
-            type="password"
-            value={openAiApiKeyDraft}
-            onChange={(event) => setOpenAiApiKeyDraft(event.target.value)}
-            placeholder="sk-..."
-            style={styles.apiKeyInput}
-          />
-
           <div style={styles.apiKeySecurityNotice}>
-            <strong>키 보관 안내</strong>
+            <strong>안전한 AI 연결</strong>
             <span>
-              키는 이 브라우저에만 저장되고 AI 요청 때만 전송돼요. 공용
-              컴퓨터에서는 사용 후 삭제해 주세요. 백업 파일에는 포함되지 않아요.
+              API 키는 브라우저와 백업 파일에 저장되지 않아요. 질문과 사진은 AI
+              처리에 필요한 순간에만 암호화된 연결로 전송돼요.
             </span>
-          </div>
-
-          <p style={styles.apiKeyErrorText}>
-            {openAiApiKeyError ||
-              (openAiApiKey.trim()
-                ? "현재 키가 저장되어 있어요. 새 키를 입력하고 키 저장을 누르면 교체돼요."
-                : "사용할 API 키를 입력하고 키 저장을 눌러 주세요.")}
-          </p>
-
-          <div style={styles.apiKeyActions}>
-            <button
-              type="button"
-              style={styles.saveButton}
-              onClick={() => {
-                if (!openAiApiKeyDraft.trim()) {
-                  setOpenAiApiKeyError("API 키를 입력해 주세요.");
-                  return;
-                }
-                applyOpenAiApiKey(openAiApiKeyDraft);
-                setShowOpenAiKeyPanel(false);
-              }}
-            >
-              키 저장
-            </button>
-            {openAiApiKey.trim() && (
-              <button
-                type="button"
-                style={styles.apiKeyRemoveButton}
-                onClick={() => {
-                  applyOpenAiApiKey("");
-                  setShowOpenAiKeyPanel(false);
-                }}
-              >
-                삭제
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -6719,12 +6640,9 @@ export default function App() {
             <button
               type="button"
               style={styles.apiKeyButton}
-              onClick={() => {
-                setOpenAiApiKeyDraft(openAiApiKey);
-                setShowOpenAiKeyPanel(true);
-              }}
+              onClick={() => setShowAiUsagePanel(true)}
             >
-              OpenAI 키
+              AI 사용량
             </button>
 
             <button
@@ -6740,7 +6658,7 @@ export default function App() {
           </div>
         </header>
 
-        {renderOpenAiKeyPanel()}
+        {renderAiUsagePanel()}
       </>
     );
   };
@@ -7117,6 +7035,162 @@ export default function App() {
       </div>
     );
   };
+
+  const startSecureSession = async () => {
+    if (!sessionConsent || isSessionStarting) return;
+    if (accessCodeRequired && !sessionAccessCode.trim()) {
+      setSessionError("참여 코드를 입력해 주세요.");
+      return;
+    }
+
+    setIsSessionStarting(true);
+    setSessionError("");
+    try {
+      await createPublicSession(sessionAccessCode);
+      setSessionStatus("authenticated");
+      setSessionAccessCode("");
+    } catch (error) {
+      setSessionError(
+        error instanceof Error
+          ? error.message
+          : "안전한 사용 세션을 시작하지 못했어요."
+      );
+    } finally {
+      setIsSessionStarting(false);
+    }
+  };
+
+  const retrySecureConnection = async () => {
+    setSessionStatus("checking");
+    setSessionError("");
+    try {
+      const session = await loadPublicSession();
+      setAccessCodeRequired(session.accessCodeRequired);
+      setSessionStatus(
+        !session.available
+          ? "unavailable"
+          : session.authenticated
+            ? "authenticated"
+            : "required"
+      );
+      setSessionError(
+        session.available ? "" : session.unavailableReason || "서비스 준비 중이에요."
+      );
+    } catch {
+      setSessionStatus("unavailable");
+      setSessionError("안전한 서비스 연결을 확인하지 못했어요.");
+    }
+  };
+
+  if (sessionStatus !== "authenticated") {
+    const isChecking = sessionStatus === "checking";
+    const isUnavailable = sessionStatus === "unavailable";
+
+    return (
+      <div style={styles.page}>
+        <div style={styles.securityFrame}>
+          <header style={styles.securityHeader}>
+            <img src={logoPath} alt="" style={styles.securityLogo} />
+            <div>
+              <h1 style={styles.securityTitle}>식물talk</h1>
+              <p style={styles.securitySubtitle}>안전한 식물 관찰을 시작해요</p>
+            </div>
+          </header>
+
+          {isChecking ? (
+            <main style={styles.securityStatus}>
+              <img src={mainImagePath} alt="" style={styles.securityPlant} />
+              <strong>안전한 연결을 확인하고 있어요.</strong>
+            </main>
+          ) : isUnavailable ? (
+            <main style={styles.securityStatus}>
+              <img src={mainImagePath} alt="" style={styles.securityPlant} />
+              <strong>{sessionError || "서비스를 준비하고 있어요."}</strong>
+              <span>보안 설정이 완료되면 이 화면에서 바로 시작할 수 있어요.</span>
+              <button
+                type="button"
+                style={styles.securitySecondaryButton}
+                onClick={() => void retrySecureConnection()}
+              >
+                다시 확인
+              </button>
+            </main>
+          ) : (
+            <main style={styles.securityContent}>
+              <section style={styles.securityIntro}>
+                <p style={styles.securityEyebrow}>선생님·보호자 확인</p>
+                <h2 style={styles.securityHeading}>기록은 이 기기에 보관해요</h2>
+                <p style={styles.securityLead}>
+                  아이의 이름, 관찰 기록과 사진은 앱 서버에 저장하지 않아요. AI
+                  기능을 누를 때 필요한 질문이나 사진만 분석을 위해 전송해요.
+                </p>
+              </section>
+
+              <section style={styles.securityFacts}>
+                <div style={styles.securityFact}>
+                  <strong>기기 저장</strong>
+                  <span>브라우저 데이터를 지우면 기록도 함께 삭제돼요.</span>
+                </div>
+                <div style={styles.securityFact}>
+                  <strong>AI 처리</strong>
+                  <span>질문과 식물 사진은 답변·분석을 만드는 동안 처리돼요.</span>
+                </div>
+                <div style={styles.securityFactWarning}>
+                  <strong>사진 안전</strong>
+                  <span>얼굴, 이름표, 교실 개인정보가 보이는 사진은 올리지 않아요.</span>
+                </div>
+              </section>
+
+              {accessCodeRequired && (
+                <label style={styles.securityCodeLabel}>
+                  참여 코드
+                  <input
+                    type="password"
+                    value={sessionAccessCode}
+                    onChange={(event) => setSessionAccessCode(event.target.value)}
+                    autoComplete="one-time-code"
+                    style={styles.securityCodeInput}
+                  />
+                </label>
+              )}
+
+              <label style={styles.securityConsentLabel}>
+                <input
+                  type="checkbox"
+                  checked={sessionConsent}
+                  onChange={(event) => setSessionConsent(event.target.checked)}
+                  style={styles.securityCheckbox}
+                />
+                <span>
+                  선생님 또는 보호자와 함께 위 안내를 확인했고, 아이가 식물만
+                  촬영하도록 지도할게요.
+                </span>
+              </label>
+
+              {sessionError && (
+                <p role="alert" style={styles.securityError}>
+                  {sessionError}
+                </p>
+              )}
+
+              <button
+                type="button"
+                disabled={!sessionConsent || isSessionStarting}
+                style={
+                  sessionConsent && !isSessionStarting
+                    ? styles.securityPrimaryButton
+                    : styles.securityPrimaryButtonDisabled
+                }
+                onClick={() => void startSecureSession()}
+              >
+                {isSessionStarting ? "안전하게 연결 중" : "확인하고 시작하기"}
+              </button>
+            </main>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (screen === "start") {
     return (
@@ -9676,6 +9750,230 @@ const styles: Record<string, CSSProperties> = {
     overflow: "hidden",
     fontFamily:
       "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  },
+
+  securityFrame: {
+    width: "100%",
+    maxWidth: "760px",
+    maxHeight: "calc(100dvh - 16px)",
+    background: "#FFFDF6",
+    border: "1px solid #DED5BC",
+    borderRadius: "16px",
+    boxShadow: "0 14px 34px rgba(75, 90, 65, 0.14)",
+    overflow: "auto",
+    textAlign: "left",
+  },
+
+  securityHeader: {
+    minHeight: "76px",
+    padding: "14px 22px",
+    borderBottom: "1px solid #E6DEC8",
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+  },
+
+  securityLogo: {
+    width: "48px",
+    height: "48px",
+    objectFit: "contain",
+  },
+
+  securityTitle: {
+    margin: 0,
+    color: "#23492E",
+    fontSize: "27px",
+    lineHeight: 1.15,
+    fontWeight: 950,
+    letterSpacing: 0,
+  },
+
+  securitySubtitle: {
+    marginTop: "4px",
+    color: "#68785E",
+    fontSize: "14px",
+    lineHeight: 1.35,
+    fontWeight: 750,
+  },
+
+  securityStatus: {
+    minHeight: "390px",
+    padding: "38px 24px",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "14px",
+    color: "#38513C",
+    fontSize: "17px",
+    textAlign: "center",
+  },
+
+  securityPlant: {
+    width: "94px",
+    height: "94px",
+    objectFit: "contain",
+  },
+
+  securityContent: {
+    padding: "24px",
+  },
+
+  securityIntro: {
+    marginBottom: "18px",
+  },
+
+  securityEyebrow: {
+    marginBottom: "6px",
+    color: "#2D7045",
+    fontSize: "13px",
+    lineHeight: 1.3,
+    fontWeight: 900,
+  },
+
+  securityHeading: {
+    margin: 0,
+    color: "#203F2A",
+    fontSize: "24px",
+    lineHeight: 1.25,
+    fontWeight: 950,
+    letterSpacing: 0,
+  },
+
+  securityLead: {
+    marginTop: "9px",
+    color: "#526252",
+    fontSize: "15px",
+    lineHeight: 1.55,
+    fontWeight: 650,
+  },
+
+  securityFacts: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+    marginBottom: "18px",
+  },
+
+  securityFact: {
+    flex: "1 1 190px",
+    minWidth: 0,
+    padding: "12px",
+    border: "1px solid #C9DDC6",
+    borderRadius: "8px",
+    background: "#EDF6EA",
+    color: "#35533A",
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+    fontSize: "13px",
+    lineHeight: 1.45,
+  },
+
+  securityFactWarning: {
+    flex: "1 1 190px",
+    minWidth: 0,
+    padding: "12px",
+    border: "1px solid #E5C66F",
+    borderRadius: "8px",
+    background: "#FFF5D9",
+    color: "#6A531F",
+    display: "flex",
+    flexDirection: "column",
+    gap: "5px",
+    fontSize: "13px",
+    lineHeight: 1.45,
+  },
+
+  securityCodeLabel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    marginBottom: "14px",
+    color: "#3B533E",
+    fontSize: "14px",
+    fontWeight: 850,
+  },
+
+  securityCodeInput: {
+    width: "100%",
+    height: "44px",
+    border: "1px solid #B9C7B5",
+    borderRadius: "8px",
+    background: "#FFFFFF",
+    color: "#233B29",
+    padding: "0 12px",
+    outline: "none",
+  },
+
+  securityConsentLabel: {
+    padding: "12px",
+    border: "1px solid #C7D8E1",
+    borderRadius: "8px",
+    background: "#EFF7FA",
+    color: "#334F5D",
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "10px",
+    fontSize: "14px",
+    lineHeight: 1.5,
+    fontWeight: 750,
+    cursor: "pointer",
+  },
+
+  securityCheckbox: {
+    width: "20px",
+    height: "20px",
+    margin: "1px 0 0",
+    flexShrink: 0,
+    accentColor: "#4F824C",
+  },
+
+  securityError: {
+    marginTop: "10px",
+    color: "#9A3F2D",
+    fontSize: "13px",
+    lineHeight: 1.4,
+    fontWeight: 800,
+  },
+
+  securityPrimaryButton: {
+    width: "100%",
+    minHeight: "48px",
+    marginTop: "14px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#4F824C",
+    color: "#FFFFFF",
+    fontSize: "16px",
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+
+  securityPrimaryButtonDisabled: {
+    width: "100%",
+    minHeight: "48px",
+    marginTop: "14px",
+    border: "none",
+    borderRadius: "8px",
+    background: "#C8CEC4",
+    color: "#FFFFFF",
+    fontSize: "16px",
+    fontWeight: 900,
+    cursor: "not-allowed",
+  },
+
+  securitySecondaryButton: {
+    minHeight: "42px",
+    marginTop: "6px",
+    border: "1px solid #AFC5A9",
+    borderRadius: "8px",
+    background: "#FFFFFF",
+    color: "#355B38",
+    padding: "0 18px",
+    fontSize: "14px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 
   landscapeFrame: {

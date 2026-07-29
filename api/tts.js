@@ -1,25 +1,28 @@
 import OpenAI from 'openai';
-
-async function getOpenAiApiKey(req) {
-  const headerKey = req.headers['x-openai-api-key'];
-  const bodyKey = req.body?.openAiApiKey;
-  const key = typeof headerKey === 'string' ? headerKey : bodyKey;
-  return typeof key === 'string' ? key.trim() : '';
-}
+import {
+  authorizeAiRequest,
+  getServerOpenAiApiKey,
+} from '../lib/api-security.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  const apiKey = await getOpenAiApiKey(req);
-  if (!apiKey) {
-    return res.status(400).json({ ok: false, error: 'OpenAI API 키가 필요합니다.' });
-  }
-
   const { text } = req.body ?? {};
   if (!text || typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ ok: false, error: 'text is required' });
+  }
+
+  const authorization = await authorizeAiRequest(req, res, {
+    kind: 'tts',
+    maxBodyBytes: 2 * 1024,
+  });
+  if (!authorization) return;
+
+  const apiKey = getServerOpenAiApiKey();
+  if (!apiKey) {
+    return res.status(503).json({ ok: false, error: 'AI 연결을 준비하고 있어요.' });
   }
 
   try {
