@@ -1037,7 +1037,7 @@ function createTeacherInfoDraft(plantType: string): TeacherPlantInfo {
         preset.edibleInfo.caution ??
         "먹거나 만지기 전에는 선생님이나 어른과 함께 확인해요.",
       growthInfo: `${preset.growthInfo.sizeHint} ${preset.growthInfo.growthTimeHint}`,
-      careInfo: `${preset.care.watering} ${preset.care.sunlight}`,
+      careInfo: `${preset.care.water} ${preset.care.sunlight}`,
       lightInfo: preset.care.sunlight,
       environmentInfo:
         "실내에서 키우는지, 바깥에서 키우는지와 계절 온도에 따라 지내는 모습이 달라요.",
@@ -1297,7 +1297,9 @@ function buildChildCurriculumReport(
     "잘자라",
   ]);
   const joinAnalysisText = (...parts: Array<string | false | null | undefined>) =>
-    parts.filter((part): part is string => Boolean(part?.trim())).join(" ");
+    parts
+      .filter((part): part is string => typeof part === "string" && Boolean(part.trim()))
+      .join(" ");
   const shortenEvidence = (text: string, maxLength = 18) =>
     text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 
@@ -2563,6 +2565,7 @@ export default function App() {
   const [isSessionStarting, setIsSessionStarting] = useState(false);
   const [accessCodeRequired, setAccessCodeRequired] = useState(false);
   const [showAiUsagePanel, setShowAiUsagePanel] = useState(false);
+  const [showApiKeyGuide, setShowApiKeyGuide] = useState(false);
   const [teacherCredential, setTeacherCredential] =
     useState<TeacherCredential | null>(loadTeacherCredential);
   const [teacherUnlockedUntil, setTeacherUnlockedUntil] = useState(0);
@@ -3209,6 +3212,7 @@ export default function App() {
     const timer = window.setTimeout(() => {
       setTeacherUnlockedUntil(0);
       setShowAiUsagePanel(false);
+      setShowApiKeyGuide(false);
       setApiKeyDraft("");
       setScreen((currentScreen) =>
         ["analysis", "answerTest", "register"].includes(currentScreen)
@@ -3596,6 +3600,7 @@ export default function App() {
   const lockTeacherTools = () => {
     setTeacherUnlockedUntil(0);
     setShowAiUsagePanel(false);
+    setShowApiKeyGuide(false);
     setApiKeyDraft("");
     setScreen((currentScreen) =>
       ["analysis", "answerTest", "register"].includes(currentScreen)
@@ -3617,6 +3622,7 @@ export default function App() {
     setTeacherPasswordConfirm("");
     setTeacherAuthError("");
     setShowAiUsagePanel(false);
+    setShowApiKeyGuide(false);
   };
 
   const addChildToRoster = () => {
@@ -3726,10 +3732,6 @@ export default function App() {
   const photoNeedsCare = latestPhotoRecord?.secondValue === "돌봄이 필요해요";
   const photoShowsNewLeaf = latestPhotoRecord?.firstValue === "새 잎이 났어요";
   const photoShowsGrowth = latestPhotoRecord?.firstValue === "커졌어요";
-  const latestLeafIcon = latestLeafRecord?.secondIcon || latestLeafRecord?.firstIcon;
-  const latestSoilIcon = latestSoilRecord?.firstIcon || latestSoilRecord?.secondIcon;
-  const latestPhotoIcon =
-    latestPhotoRecord?.firstIcon || latestPhotoRecord?.secondIcon || "/icons/camera.png";
   const todayLeafIcon = todayLeafRecord?.secondIcon || todayLeafRecord?.firstIcon;
   const todaySoilIcon = todaySoilRecord?.firstIcon || todaySoilRecord?.secondIcon;
   const todayPhotoIcon =
@@ -3744,19 +3746,6 @@ export default function App() {
     todaySoilRecord?.firstValue === "조금 말랐어요" ||
     todaySoilRecord?.firstValue === "마르기 시작했어요" ||
     todaySoilRecord?.secondValue === "갈라졌어요";
-  const leafVisualState = latestLeafRecord
-    ? leafNeedsCare
-      ? "살펴봐요"
-      : "괜찮아요"
-    : "기록해요";
-  const soilVisualState = latestSoilRecord
-    ? soilLooksDry
-      ? "목말라요"
-      : "괜찮아요"
-    : "기록해요";
-  const photoVisualState = latestPhotoRecord
-    ? latestPhotoRecord.firstValue
-    : "사진 찍기";
   const todayLeafVisualState = todayLeafRecord
     ? todayLeafNeedsCare
       ? "살펴봐요"
@@ -3770,15 +3759,6 @@ export default function App() {
   const todayPhotoVisualState = todayPhotoRecord
     ? todayPhotoRecord.firstValue
     : "사진 찍기";
-  const recentObservationSpeech = latestRecord
-    ? soilLooksDry
-      ? "흙 먼저 봐요"
-      : leafNeedsCare
-      ? "잎 먼저 봐요"
-      : latestPhotoRecord
-      ? "변화가 보여요"
-      : "잘 보고 있어요"
-    : "오늘 관찰해요";
   const recordNeedsAttention = soilLooksDry || leafNeedsCare;
   const waterDueBySchedule = daysSinceWatered >= careState.waterIntervalDays;
   const waterNeedsCare = !waterDoneToday && (waterDueBySchedule || soilLooksDry);
@@ -5613,10 +5593,6 @@ export default function App() {
           "먹는 식물로 보기보다",
           "식용 가능 여부",
         ]);
-      const hasSafetyConcern = includesAny(edibleText, [
-        "독성",
-        "입에 넣지",
-      ]);
       const flowerIsRare = includesAny(flowerText, [
         "잘 피우지",
         "자주",
@@ -6947,6 +6923,95 @@ export default function App() {
     );
   };
 
+  const renderApiKeyGuide = () => {
+    if (!showApiKeyGuide || !isTeacherUnlocked) return null;
+    const guideSteps = [
+      {
+        title: "OpenAI API 계정 확인",
+        text: "OpenAI Platform에 로그인해요. ChatGPT 구독과 API 결제는 서로 별도예요.",
+      },
+      {
+        title: "API 결제와 사용 한도 설정",
+        text: "결제 수단이나 선불 잔액을 준비하고 사용 한도를 확인해요. 자동 충전을 원하지 않으면 꺼져 있는지 꼭 확인해요.",
+      },
+      {
+        title: "비밀 키 만들기",
+        text: "API Keys에서 새 비밀 키를 만들고 바로 복사해요. 키는 다른 사람에게 보여주거나 공유하지 않아요.",
+      },
+      {
+        title: "식물talk에 연결",
+        text: "복사한 sk- 키를 입력해요. 연결 후에는 암호화된 HttpOnly 쿠키로 12시간 동안만 사용해요.",
+      },
+    ];
+
+    return (
+      <div style={styles.apiKeyGuideBackdrop} role="presentation">
+        <section
+          style={styles.apiKeyGuideCard}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="api-key-guide-title"
+        >
+          <div style={styles.teacherGateHeader}>
+            <div>
+              <p style={styles.teacherGateEyebrow}>교사·보호자 안내</p>
+              <h2 id="api-key-guide-title" style={styles.teacherGateTitle}>
+                OpenAI API 키 준비하기
+              </h2>
+            </div>
+            <button
+              type="button"
+              style={styles.teacherGateCloseButton}
+              onClick={() => setShowApiKeyGuide(false)}
+              aria-label="닫기"
+            >
+              ×
+            </button>
+          </div>
+
+          <ol style={styles.apiKeyGuideSteps}>
+            {guideSteps.map((step, index) => (
+              <li key={step.title} style={styles.apiKeyGuideStep}>
+                <span style={styles.apiKeyGuideStepNumber}>{index + 1}</span>
+                <div>
+                  <strong style={styles.apiKeyGuideStepTitle}>{step.title}</strong>
+                  <p style={styles.apiKeyGuideStepText}>{step.text}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <div style={styles.apiKeyGuideActions}>
+            <a
+              href="https://platform.openai.com/settings/organization/billing/overview"
+              target="_blank"
+              rel="noreferrer"
+              style={styles.apiKeyGuideSecondaryLink}
+            >
+              결제 설정
+            </a>
+            <a
+              href="https://platform.openai.com/settings/organization/limits"
+              target="_blank"
+              rel="noreferrer"
+              style={styles.apiKeyGuideSecondaryLink}
+            >
+              사용 한도
+            </a>
+            <a
+              href="https://platform.openai.com/api-keys"
+              target="_blank"
+              rel="noreferrer"
+              style={styles.apiKeyGuidePrimaryLink}
+            >
+              API 키 만들기
+            </a>
+          </div>
+        </section>
+      </div>
+    );
+  };
+
   const renderBottomNav = () => {
     return (
       <nav style={styles.bottomNav}>
@@ -7054,6 +7119,13 @@ export default function App() {
                 ? "키가 암호화된 보안 쿠키로 연결되어 있어요."
                 : "연결된 키가 없어요."}
             </p>
+            <button
+              type="button"
+              style={styles.apiKeyGuideOpenButton}
+              onClick={() => setShowApiKeyGuide(true)}
+            >
+              API 키 만드는 방법
+            </button>
             {apiKeyError && (
               <p role="alert" style={styles.apiKeyErrorText}>
                 {apiKeyError}
@@ -7274,6 +7346,7 @@ export default function App() {
 
         {renderAiUsagePanel()}
         {renderTeacherGate()}
+        {renderApiKeyGuide()}
       </>
     );
   };
@@ -7976,14 +8049,13 @@ export default function App() {
                   />
                 </label>
 
-                <a
-                  href="https://platform.openai.com/api-keys"
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
                   style={styles.securityApiKeyLink}
+                  onClick={() => setShowApiKeyGuide(true)}
                 >
-                  OpenAI API 키 만들기
-                </a>
+                  API 키 만드는 방법
+                </button>
               </>
             )}
 
@@ -8021,6 +8093,7 @@ export default function App() {
             )}
           </main>
           {renderTeacherGate()}
+          {renderApiKeyGuide()}
         </div>
       </div>
     );
@@ -10754,12 +10827,17 @@ const styles: Record<string, CSSProperties> = {
 
   securityApiKeyLink: {
     display: "inline-block",
+    border: "none",
+    background: "transparent",
+    padding: 0,
     color: "#2D7045",
     fontSize: "13px",
     lineHeight: 1.4,
     fontWeight: 900,
     textDecoration: "underline",
     textUnderlineOffset: "3px",
+    cursor: "pointer",
+    fontFamily: "inherit",
   },
 
   securityConsentLabel: {
@@ -11544,6 +11622,133 @@ const styles: Record<string, CSSProperties> = {
       fontSize: "12px",
       fontWeight: 900,
       cursor: "pointer",
+    },
+
+    apiKeyGuideOpenButton: {
+      justifySelf: "start",
+      border: "none",
+      background: "transparent",
+      color: "#2D7045",
+      padding: 0,
+      fontSize: "12px",
+      lineHeight: 1.4,
+      fontWeight: 900,
+      textDecoration: "underline",
+      textUnderlineOffset: "3px",
+      cursor: "pointer",
+      fontFamily: "inherit",
+    },
+
+    apiKeyGuideBackdrop: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 10002,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "18px",
+      background: "rgba(30, 45, 27, 0.42)",
+    },
+
+    apiKeyGuideCard: {
+      width: "min(620px, 100%)",
+      maxHeight: "calc(100dvh - 36px)",
+      overflowY: "auto",
+      border: "1px solid #D8CFB8",
+      borderRadius: "8px",
+      background: "#FFFFFF",
+      boxShadow: "0 18px 42px rgba(35, 55, 31, 0.22)",
+      padding: "20px",
+      display: "grid",
+      gap: "16px",
+    },
+
+    apiKeyGuideSteps: {
+      margin: 0,
+      padding: 0,
+      listStyle: "none",
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+      gap: "10px 18px",
+    },
+
+    apiKeyGuideStep: {
+      minWidth: 0,
+      display: "grid",
+      gridTemplateColumns: "30px minmax(0, 1fr)",
+      alignItems: "start",
+      gap: "9px",
+      padding: "10px 0",
+      borderBottom: "1px solid #EEE9DB",
+    },
+
+    apiKeyGuideStepNumber: {
+      width: "28px",
+      height: "28px",
+      borderRadius: "50%",
+      background: "#EAF3E2",
+      color: "#31582F",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "13px",
+      fontWeight: 950,
+    },
+
+    apiKeyGuideStepTitle: {
+      display: "block",
+      color: "#284B30",
+      fontSize: "14px",
+      lineHeight: 1.4,
+      fontWeight: 950,
+    },
+
+    apiKeyGuideStepText: {
+      margin: "4px 0 0",
+      color: "#63725A",
+      fontSize: "12px",
+      lineHeight: 1.55,
+      fontWeight: 750,
+      wordBreak: "keep-all",
+    },
+
+    apiKeyGuideActions: {
+      display: "flex",
+      justifyContent: "flex-end",
+      flexWrap: "wrap",
+      gap: "8px",
+    },
+
+    apiKeyGuideSecondaryLink: {
+      minHeight: "42px",
+      border: "1px solid #D8CFB8",
+      borderRadius: "8px",
+      background: "#FFFDF6",
+      color: "#526A46",
+      padding: "10px 13px",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "13px",
+      lineHeight: 1.3,
+      fontWeight: 900,
+      textDecoration: "none",
+    },
+
+    apiKeyGuidePrimaryLink: {
+      minHeight: "42px",
+      border: "1px solid #4F7A3D",
+      borderRadius: "8px",
+      background: "#5F8D4E",
+      color: "#FFFFFF",
+      padding: "10px 14px",
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "13px",
+      lineHeight: 1.3,
+      fontWeight: 900,
+      textDecoration: "none",
     },
 
     apiKeySaveButton: {

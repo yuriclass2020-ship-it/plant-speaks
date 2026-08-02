@@ -96,6 +96,18 @@ npm audit --omit=dev
 
 ## 배포
 
+Vercel 프로젝트 설정은 다음과 같이 유지합니다.
+
+```text
+Framework Preset: Vite
+Build Command: npm run build
+Output Directory: dist
+```
+
+배포 빌드는 TypeScript 검사 후 Vite 번들을 생성합니다. 앱의 `API 키 만드는 방법`
+버튼은 교사 잠금 해제 후 4단계 안내를 보여주고, OpenAI 공식 결제 설정·사용 한도·
+API 키 생성 페이지를 각각 엽니다. ChatGPT 구독과 OpenAI API 결제는 별도입니다.
+
 `master` 브랜치를 GitHub에 push하면 연결된 Vercel 프로젝트가 자동으로
 배포됩니다. 보안 환경 변수를 변경한 경우 `Deployments > Redeploy`를 실행해야
 런타임에 반영됩니다. Vercel과 Upstash 무료 플랜 한도 안에서는 운영자가 별도
