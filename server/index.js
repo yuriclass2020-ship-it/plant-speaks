@@ -3,7 +3,12 @@ import cors from 'cors';
 import OpenAI from 'openai';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -64,6 +69,8 @@ const PLANT_INFO_RETRY_COUNT = 2;
 const PLANT_INFO_TIMEOUT_MS = 30000;
 const PHOTO_ANALYSIS_TIMEOUT_MS = 30000;
 const CHAT_ANSWER_TIMEOUT_MS = 10000;
+const LOCAL_USER_KEY_COOKIE = 'plant_talk_user_key';
+const LOCAL_USER_KEY_TTL_SECONDS = 60 * 60 * 12;
 
 function getTestAccessCodes() {
   const rawCodes = process.env.TEST_ACCESS_CODES || process.env.TEST_ACCESS_CODE || '';
@@ -366,14 +373,69 @@ function buildTtsInstructions() {
   ].join(' ');
 }
 
-function getOpenAIClient() {
-  const effectiveApiKey = String(process.env.OPENAI_API_KEY || '').trim();
+function getOpenAIClient(apiKey) {
+  const effectiveApiKey = String(apiKey || '').trim();
 
   if (!effectiveApiKey) {
-    throw new Error('OPENAI_API_KEY is missing');
+    throw new Error('User OpenAI API key is missing');
   }
 
   return new OpenAI({ apiKey: effectiveApiKey });
+}
+
+function getCookieValue(req, name) {
+  const cookieHeader = String(req.headers.cookie ?? '');
+  for (const part of cookieHeader.split(';')) {
+    const separator = part.indexOf('=');
+    const cookieName = separator >= 0 ? part.slice(0, separator).trim() : '';
+    if (cookieName !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
+function getLocalUserKeyEncryptionKey() {
+  const secret =
+    String(process.env.SESSION_SECRET ?? '').trim() ||
+    'plant-talk-local-user-key-encryption-secret';
+  return createHash('sha256').update(secret).digest();
+}
+
+function createLocalUserKeyToken(apiKey) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', getLocalUserKeyEncryptionKey(), iv);
+  const encrypted = Buffer.concat([
+    cipher.update(String(apiKey), 'utf8'),
+    cipher.final(),
+  ]);
+  return [iv, cipher.getAuthTag(), encrypted]
+    .map((value) => value.toString('base64url'))
+    .join('.');
+}
+
+function getRequestOpenAiApiKey(req) {
+  const token = getCookieValue(req, LOCAL_USER_KEY_COOKIE);
+  try {
+    const [ivValue, tagValue, encryptedValue] = token.split('.');
+    if (!ivValue || !tagValue || !encryptedValue) return '';
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      getLocalUserKeyEncryptionKey(),
+      Buffer.from(ivValue, 'base64url')
+    );
+    decipher.setAuthTag(Buffer.from(tagValue, 'base64url'));
+    const value = Buffer.concat([
+      decipher.update(Buffer.from(encryptedValue, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+    return value.length >= 20 && value.length <= 512 ? value : '';
+  } catch {
+    return '';
+  }
 }
 
 function createFallbackPlantInfoDraft(plantType) {
@@ -735,8 +797,8 @@ function parsePhotoAnalysisJson(text) {
   return parsePlantInfoDraftJson(text);
 }
 
-async function generatePhotoAnalysis({ plantName, plantType, imageData }) {
-  const openai = getOpenAIClient();
+async function generatePhotoAnalysis({ plantName, plantType, imageData, openAiApiKey }) {
+  const openai = getOpenAIClient(openAiApiKey);
   const model = process.env.OPENAI_PHOTO_ANALYSIS_MODEL || DEFAULT_PHOTO_ANALYSIS_MODEL;
 
   const response = await withTimeout(
@@ -1862,8 +1924,8 @@ function createLocalChatAnswer({ question, plantName, plantType, teacherInfo }) 
   return null;
 }
 
-async function generateChatAnswer(context) {
-  const openai = getOpenAIClient();
+async function generateChatAnswer(context, openAiApiKey) {
+  const openai = getOpenAIClient(openAiApiKey);
   const model = process.env.OPENAI_CHAT_ANSWER_MODEL || DEFAULT_CHAT_ANSWER_MODEL;
 
   const response = await withTimeout(
@@ -1895,8 +1957,8 @@ async function withTimeout(promise, timeoutMs, label) {
   }
 }
 
-async function generatePlantInfoDraftOnce(plantType, model) {
-  const openai = getOpenAIClient();
+async function generatePlantInfoDraftOnce(plantType, model, openAiApiKey) {
+  const openai = getOpenAIClient(openAiApiKey);
 
   const response = await withTimeout(
     openai.responses.create({
@@ -1915,14 +1977,14 @@ async function generatePlantInfoDraftOnce(plantType, model) {
   return parsePlantInfoDraftJson(response.output_text);
 }
 
-async function generatePlantInfoDraft(plantType) {
+async function generatePlantInfoDraft(plantType, openAiApiKey) {
   const models = getPlantInfoModels();
   const errors = [];
 
   for (const model of models) {
     for (let attempt = 1; attempt <= PLANT_INFO_RETRY_COUNT; attempt += 1) {
       try {
-        return await generatePlantInfoDraftOnce(plantType, model);
+        return await generatePlantInfoDraftOnce(plantType, model, openAiApiKey);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'unknown OpenAI error';
@@ -1960,8 +2022,8 @@ async function writeTtsAudioBufferToDisk(cacheKey, buffer) {
   await writeFile(getTtsCacheFilePath(cacheKey), buffer);
 }
 
-async function generateTtsAudioBuffer(text) {
-  const openai = getOpenAIClient();
+async function generateTtsAudioBuffer(text, openAiApiKey) {
+  const openai = getOpenAIClient(openAiApiKey);
 
   const response = await openai.audio.speech.create({
     model: 'gpt-4o-mini-tts',
@@ -1978,7 +2040,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     message: 'TTS server is running',
     database: dbPath,
-    hasOpenAIKey: Boolean(process.env.OPENAI_API_KEY),
+    acceptsUserOpenAIKey: true,
     requiresTestAccessCode: getTestAccessCodes().length > 0,
     testAvailability: getTestAvailability(),
     usage: getUsageSnapshot(),
@@ -2050,6 +2112,66 @@ app.post('/api/state/reset', (req, res) => {
   }
 });
 
+app.get('/api/user-key', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({
+    ok: true,
+    connected: Boolean(getRequestOpenAiApiKey(req)),
+  });
+});
+
+app.post('/api/user-key', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+  if (!apiKey.startsWith('sk-') || apiKey.length < 20 || apiKey.length > 512) {
+    return res.status(400).json({
+      ok: false,
+      code: 'USER_API_KEY_INVALID',
+      error: 'sk-로 시작하는 OpenAI API 키를 확인해 주세요.',
+    });
+  }
+
+  try {
+    const openai = new OpenAI({ apiKey, timeout: 10000, maxRetries: 0 });
+    await openai.models.list();
+    const token = createLocalUserKeyToken(apiKey);
+    res.setHeader(
+      'Set-Cookie',
+      `${LOCAL_USER_KEY_COOKIE}=${encodeURIComponent(token)}; Path=/; Max-Age=${LOCAL_USER_KEY_TTL_SECONDS}; HttpOnly; SameSite=Strict`
+    );
+    return res.json({ ok: true, connected: true });
+  } catch (error) {
+    const status = Number(error?.status) || 0;
+    console.error('Local user key validation error:', {
+      name: String(error?.name ?? 'Error'),
+      status,
+      code: String(error?.code ?? ''),
+    });
+    return res.status(status === 429 ? 429 : status === 403 ? 403 : 401).json({
+      ok: false,
+      code:
+        status === 429
+          ? 'USER_OPENAI_LIMIT_REACHED'
+          : status === 403
+            ? 'USER_OPENAI_ACCESS_DENIED'
+            : 'USER_API_KEY_INVALID',
+      error:
+        status === 429
+          ? '이 OpenAI 계정의 사용 한도나 잔액을 확인해 주세요.'
+          : 'OpenAI API 키가 올바르지 않거나 사용할 수 없어요.',
+    });
+  }
+});
+
+app.delete('/api/user-key', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader(
+    'Set-Cookie',
+    `${LOCAL_USER_KEY_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict`
+  );
+  return res.json({ ok: true, connected: false });
+});
+
 app.post('/api/plant-info-draft', async (req, res) => {
   if (!requireTestAccess(req, res)) return;
 
@@ -2065,6 +2187,7 @@ app.post('/api/plant-info-draft', async (req, res) => {
   const normalizedPlantType = plantType.trim();
   const cacheKey = normalizedPlantType.toLowerCase();
   const localDraft = findLocalPlantInfoDraft(normalizedPlantType);
+  const requestApiKey = getRequestOpenAiApiKey(req);
   if (localDraft) {
     return res.json({
       ok: true,
@@ -2099,7 +2222,7 @@ app.post('/api/plant-info-draft', async (req, res) => {
   incrementUsage('draft');
 
   try {
-    const rawDraft = await generatePlantInfoDraft(normalizedPlantType);
+    const rawDraft = await generatePlantInfoDraft(normalizedPlantType, requestApiKey);
     const draft = sanitizePlantInfoDraft(rawDraft, normalizedPlantType);
 
     plantInfoDraftCache.set(cacheKey, draft);
@@ -2152,6 +2275,7 @@ app.post('/api/photo-analysis', async (req, res) => {
       ? plantType.trim()
       : '종류를 아직 모르는 식물';
   const cacheKey = `${PHOTO_ANALYSIS_STYLE_VERSION}:${safePlantName}:${safePlantType}:${imageData.length}:${imageData.slice(-256)}`;
+  const requestApiKey = getRequestOpenAiApiKey(req);
   if (photoAnalysisCache.has(cacheKey)) {
     return res.json({
       ok: true,
@@ -2190,6 +2314,7 @@ app.post('/api/photo-analysis', async (req, res) => {
       plantName: safePlantName,
       plantType: safePlantType,
       imageData,
+      openAiApiKey: requestApiKey,
     });
 
     photoAnalysisCache.set(cacheKey, analysis);
@@ -2247,6 +2372,7 @@ app.post('/api/chat-answer', async (req, res) => {
     typeof plantType === 'string' && plantType.trim()
       ? plantType.trim()
       : '종류를 아직 모르는 식물';
+  const requestApiKey = getRequestOpenAiApiKey(req);
   const localAnswer = isRawBeanQuestion(
     question,
     safePlantName,
@@ -2295,7 +2421,8 @@ app.post('/api/chat-answer', async (req, res) => {
           ? recentChatMessages.slice(-4)
           : [],
         latestPhotoAnalysis,
-      }
+      },
+      requestApiKey
     );
 
     return res.json({
@@ -2372,7 +2499,8 @@ app.post('/api/tts', async (req, res) => {
 
     incrementUsage('tts');
 
-    const audioBuffer = await generateTtsAudioBuffer(normalizedText);
+    const requestApiKey = getRequestOpenAiApiKey(req);
+    const audioBuffer = await generateTtsAudioBuffer(normalizedText, requestApiKey);
     const audioBase64 = audioBuffer.toString('base64');
 
     await writeTtsAudioBufferToDisk(cacheKey, audioBuffer);

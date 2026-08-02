@@ -4,6 +4,7 @@ import {
   authorizeSessionCreation,
   createSessionToken,
   getExpiredSessionCookie,
+  getExpiredUserKeyCookie,
   getSessionReadiness,
   getSessionCookie,
   isValidAccessCode,
@@ -37,7 +38,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'DELETE') {
-    res.setHeader('Set-Cookie', getExpiredSessionCookie(req));
+    res.setHeader('Set-Cookie', [
+      getExpiredSessionCookie(req),
+      getExpiredUserKeyCookie(req),
+    ]);
     return res.json({ ok: true });
   }
   if (req.method !== 'POST') {

@@ -1,7 +1,9 @@
 import OpenAI from 'openai';
 import {
   authorizeAiRequest,
-  getServerOpenAiApiKey,
+  getPublicOpenAiError,
+  getRequestOpenAiApiKey,
+  logOpenAiError,
 } from '../lib/api-security.js';
 
 const DEFAULT_MODEL = 'gpt-4.1-mini';
@@ -153,12 +155,13 @@ export default async function handler(req, res) {
     '그 질문은 지금 바로 알기 어려워요. 내 잎과 흙을 함께 살펴볼래?';
   const safeName = cleanText(plantName) || '이 식물';
   const safeType = cleanText(plantType) || '종류 미확인 식물';
-  const apiKey = getServerOpenAiApiKey();
+  const apiKey = getRequestOpenAiApiKey(req);
 
   if (!apiKey) {
-    return res.status(503).json({
+    return res.status(400).json({
       ok: false,
-      error: 'AI 연결을 준비하고 있어요.',
+      code: 'USER_API_KEY_REQUIRED',
+      error: '교사 또는 보호자의 OpenAI API 키를 입력해 주세요.',
     });
   }
 
@@ -192,13 +195,11 @@ export default async function handler(req, res) {
       answer: sanitize(response.output_text, safeFallback),
     });
   } catch (error) {
-    console.error('Chat answer error:', error);
-    return res.json({
-      ok: true,
-      source: 'safe-fallback',
-      answer: safeFallback,
-      warning:
-        error instanceof Error ? error.message : 'AI 답변을 만들지 못했어요.',
-    });
+    logOpenAiError('Chat answer error', error);
+    const publicError = getPublicOpenAiError(
+      error,
+      'AI 답변을 만들지 못했어요. 잠시 후 다시 질문해 주세요.'
+    );
+    return res.status(publicError.status).json({ ok: false, ...publicError });
   }
 }

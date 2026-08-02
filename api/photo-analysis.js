@@ -1,7 +1,9 @@
 import OpenAI from 'openai';
 import {
   authorizeAiRequest,
-  getServerOpenAiApiKey,
+  getPublicOpenAiError,
+  getRequestOpenAiApiKey,
+  logOpenAiError,
 } from '../lib/api-security.js';
 
 const DEFAULT_MODEL = 'gpt-5-mini';
@@ -253,11 +255,12 @@ export default async function handler(req, res) {
     previousDate,
   } = req.body ?? {};
 
-  const apiKey = getServerOpenAiApiKey();
+  const apiKey = getRequestOpenAiApiKey(req);
   if (!apiKey) {
-    return res.status(503).json({
+    return res.status(400).json({
       ok: false,
-      error: 'AI 연결을 준비하고 있어요.',
+      code: 'USER_API_KEY_REQUIRED',
+      error: '교사 또는 보호자의 OpenAI API 키를 입력해 주세요.',
     });
   }
 
@@ -354,13 +357,11 @@ export default async function handler(req, res) {
       analysis: sanitize(parsed),
     });
   } catch (error) {
-    console.error('Photo analysis error:', error);
-    return res.status(500).json({
-      ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : '사진을 분석하지 못했어요.',
-    });
+    logOpenAiError('Photo analysis error', error);
+    const publicError = getPublicOpenAiError(
+      error,
+      '사진을 분석하지 못했어요. 잠시 후 다시 눌러 주세요.'
+    );
+    return res.status(publicError.status).json({ ok: false, ...publicError });
   }
 }

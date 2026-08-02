@@ -1,7 +1,9 @@
 import OpenAI from 'openai';
 import {
   authorizeAiRequest,
-  getServerOpenAiApiKey,
+  getPublicOpenAiError,
+  getRequestOpenAiApiKey,
+  logOpenAiError,
 } from '../lib/api-security.js';
 
 export default async function handler(req, res) {
@@ -20,9 +22,13 @@ export default async function handler(req, res) {
   });
   if (!authorization) return;
 
-  const apiKey = getServerOpenAiApiKey();
+  const apiKey = getRequestOpenAiApiKey(req);
   if (!apiKey) {
-    return res.status(503).json({ ok: false, error: 'AI 연결을 준비하고 있어요.' });
+    return res.status(400).json({
+      ok: false,
+      code: 'USER_API_KEY_REQUIRED',
+      error: '교사 또는 보호자의 OpenAI API 키를 입력해 주세요.',
+    });
   }
 
   try {
@@ -46,7 +52,11 @@ export default async function handler(req, res) {
     const audioBase64 = buffer.toString('base64');
     return res.json({ ok: true, audioBase64 });
   } catch (error) {
-    console.error('TTS error:', error);
-    return res.status(500).json({ ok: false, error: 'Failed to generate speech' });
+    logOpenAiError('TTS error', error);
+    const publicError = getPublicOpenAiError(
+      error,
+      '읽어주기 음성을 만들지 못했어요.'
+    );
+    return res.status(publicError.status).json({ ok: false, ...publicError });
   }
 }

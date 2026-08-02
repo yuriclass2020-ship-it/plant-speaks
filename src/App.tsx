@@ -188,6 +188,7 @@ type DraftStatus = {
 };
 
 type SessionStatus = "checking" | "required" | "authenticated" | "unavailable";
+type UserKeyStatus = "checking" | "required" | "connected";
 
 type PublicSessionInfo = {
   ok: boolean;
@@ -198,6 +199,28 @@ type PublicSessionInfo = {
   unavailableReason?: string;
   error?: string;
 };
+
+class SecureApiError extends Error {
+  code: string;
+
+  constructor(message: string, code = "") {
+    super(message);
+    this.name = "SecureApiError";
+    this.code = code;
+  }
+}
+
+function isUserOpenAiIssue(error: unknown): error is SecureApiError {
+  return (
+    error instanceof SecureApiError &&
+    [
+      "USER_API_KEY_REQUIRED",
+      "USER_API_KEY_INVALID",
+      "USER_OPENAI_LIMIT_REACHED",
+      "USER_OPENAI_ACCESS_DENIED",
+    ].includes(error.code)
+  );
+}
 
 const CARE_STORAGE_KEY = "plant-speaks-care-state-v1";
 const PLANT_STORAGE_KEY = "plant-speaks-plant-v1";
@@ -226,6 +249,7 @@ const API_PLANT_INFO_DRAFT_URL = "/api/plant-info-draft";
 const API_TTS_URL = "/api/tts";
 const API_PHOTO_ANALYSIS_URL = "/api/photo-analysis";
 const API_CHAT_ANSWER_URL = "/api/chat-answer";
+const API_USER_KEY_URL = "/api/user-key";
 const SESSION_EXPIRED_EVENT = "plant-talk-session-expired";
 const CARE_REACTION_SPEECH: Record<"waterCount" | "sunCount", string> = {
   waterCount: "고마워. 시원해!",
@@ -242,11 +266,22 @@ const QUICK_CHAT_QUESTIONS = [
 ];
 
 function getApiHeaders(): HeadersInit {
-  return { "Content-Type": "application/json" };
+  return {
+    "Content-Type": "application/json",
+  };
 }
 
-function handleSecureApiResponse(response: Response) {
-  if (response.status === 401 && typeof window !== "undefined") {
+function isPlausibleOpenAiApiKey(value: string) {
+  const key = value.trim();
+  return key.startsWith("sk-") && key.length >= 20 && key.length <= 512;
+}
+
+function handleSecureApiResponse(response: Response, code?: string) {
+  if (
+    response.status === 401 &&
+    code === "SESSION_REQUIRED" &&
+    typeof window !== "undefined"
+  ) {
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
   }
 }
@@ -264,6 +299,53 @@ async function loadPublicSession(): Promise<PublicSessionInfo> {
     authenticated: response.ok && Boolean(data.authenticated),
     accessCodeRequired: Boolean(data.accessCodeRequired),
   };
+}
+
+type UserKeyResponse = {
+  ok: boolean;
+  connected?: boolean;
+  code?: string;
+  error?: string;
+};
+
+async function loadUserKeyConnection(): Promise<boolean> {
+  const response = await fetch(API_USER_KEY_URL, {
+    method: "GET",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  const data = (await response.json()) as UserKeyResponse;
+  handleSecureApiResponse(response, data.code);
+  if (!response.ok || !data.ok) {
+    throw new SecureApiError(data.error || "AI 키 연결을 확인하지 못했어요.", data.code);
+  }
+  return Boolean(data.connected);
+}
+
+async function connectUserOpenAiApiKey(apiKey: string): Promise<void> {
+  const response = await fetch(API_USER_KEY_URL, {
+    method: "POST",
+    headers: getApiHeaders(),
+    credentials: "same-origin",
+    body: JSON.stringify({ apiKey }),
+  });
+  const data = (await response.json()) as UserKeyResponse;
+  handleSecureApiResponse(response, data.code);
+  if (!response.ok || !data.ok || !data.connected) {
+    throw new SecureApiError(data.error || "OpenAI API 키를 연결하지 못했어요.", data.code);
+  }
+}
+
+async function disconnectUserOpenAiApiKey(): Promise<void> {
+  const response = await fetch(API_USER_KEY_URL, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  const data = (await response.json()) as UserKeyResponse;
+  handleSecureApiResponse(response, data.code);
+  if (!response.ok || !data.ok) {
+    throw new SecureApiError(data.error || "OpenAI API 키를 삭제하지 못했어요.", data.code);
+  }
 }
 
 async function createPublicSession(accessCode: string) {
@@ -448,6 +530,7 @@ async function loadPlantInfoDraftFromServer(plantType: string): Promise<{
   const response = await fetch(API_PLANT_INFO_DRAFT_URL, {
     method: "POST",
     headers: getApiHeaders(),
+    credentials: "same-origin",
     body: JSON.stringify({ plantType }),
   });
   const data = (await response.json()) as {
@@ -455,11 +538,14 @@ async function loadPlantInfoDraftFromServer(plantType: string): Promise<{
     source?: string;
     draft?: TeacherPlantInfo;
     warning?: string;
+    code?: string;
+    error?: string;
   };
 
-  handleSecureApiResponse(response);
+  handleSecureApiResponse(response, data.code);
 
   if (!response.ok || !data.ok || !data.draft) {
+    if (data.error) throw new SecureApiError(data.error, data.code);
     return null;
   }
 
@@ -490,6 +576,7 @@ async function loadPhotoAnalysisFromServer({
   const response = await fetch(API_PHOTO_ANALYSIS_URL, {
     method: "POST",
     headers: getApiHeaders(),
+    credentials: "same-origin",
     body: JSON.stringify({
       plantName,
       plantType,
@@ -504,12 +591,16 @@ async function loadPhotoAnalysisFromServer({
     ok: boolean;
     analysis?: PhotoAnalysis;
     error?: string;
+    code?: string;
   };
 
-  handleSecureApiResponse(response);
+  handleSecureApiResponse(response, data.code);
 
   if (!response.ok || !data.ok || !data.analysis) {
-    throw new Error(data.error || "사진을 살펴보지 못했어요.");
+    throw new SecureApiError(
+      data.error || "사진을 살펴보지 못했어요.",
+      data.code
+    );
   }
 
   return data.analysis;
@@ -539,6 +630,7 @@ async function loadChatAnswerFromServer({
   const response = await fetch(API_CHAT_ANSWER_URL, {
     method: "POST",
     headers: getApiHeaders(),
+    credentials: "same-origin",
     body: JSON.stringify({
       question,
       fallbackAnswer,
@@ -573,12 +665,16 @@ async function loadChatAnswerFromServer({
     error?: string;
     source?: "ai" | "safe-fallback";
     warning?: string;
+    code?: string;
   };
 
-  handleSecureApiResponse(response);
+  handleSecureApiResponse(response, data.code);
 
   if (!response.ok || !data.ok || !data.answer) {
-    throw new Error(data.error || "AI 답변을 만들지 못했어요.");
+    throw new SecureApiError(
+      data.error || "AI 답변을 만들지 못했어요.",
+      data.code
+    );
   }
   if (data.source === "safe-fallback") {
     throw new Error(data.warning || "AI 답변이 잠시 어려워요.");
@@ -1424,6 +1520,7 @@ async function requestTtsObjectUrl(text: string) {
   const response = await fetch(API_TTS_URL, {
     method: "POST",
     headers: getApiHeaders(),
+    credentials: "same-origin",
     body: JSON.stringify({ text }),
   });
 
@@ -1431,12 +1528,16 @@ async function requestTtsObjectUrl(text: string) {
     ok: boolean;
     audioBase64?: string;
     error?: string;
+    code?: string;
   };
 
-  handleSecureApiResponse(response);
+  handleSecureApiResponse(response, data.code);
 
   if (!response.ok || !data.ok || !data.audioBase64) {
-    throw new Error(data.error || "음성을 만들지 못했어요.");
+    throw new SecureApiError(
+      data.error || "음성을 만들지 못했어요.",
+      data.code
+    );
   }
 
   return audioBase64ToObjectUrl(data.audioBase64);
@@ -2381,6 +2482,10 @@ export default function App() {
   const [photoAnalysisCache, setPhotoAnalysisCache] = useState<
     Record<string, PhotoAnalysis>
   >({});
+  const [userKeyStatus, setUserKeyStatus] = useState<UserKeyStatus>("checking");
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
+  const [apiKeyError, setApiKeyError] = useState("");
+  const [isApiKeySaving, setIsApiKeySaving] = useState(false);
   const [sessionStatus, setSessionStatus] =
     useState<SessionStatus>("checking");
   const [sessionAccessCode, setSessionAccessCode] = useState("");
@@ -2403,6 +2508,19 @@ export default function App() {
   const [readingMessageId, setReadingMessageId] = useState("");
   const [loadingAudioId, setLoadingAudioId] = useState("");
   const [careMotion, setCareMotion] = useState<"" | "water" | "sun">("");
+
+  const reportUserOpenAiIssue = (error: unknown) => {
+    if (!isUserOpenAiIssue(error)) return false;
+
+    const message = error instanceof Error ? error.message : "OpenAI 키를 확인해 주세요.";
+    if (["USER_API_KEY_REQUIRED", "USER_API_KEY_INVALID"].includes(error.code)) {
+      setUserKeyStatus("required");
+    }
+    setApiKeyDraft("");
+    setApiKeyError(message);
+    setShowAiUsagePanel(true);
+    return true;
+  };
   const [waterPromptDismissedDateKey, setWaterPromptDismissedDateKey] =
     useState("");
   const [installPrompt, setInstallPrompt] =
@@ -2934,6 +3052,29 @@ export default function App() {
 
   useEffect(() => {
     let isMounted = true;
+    if (sessionStatus !== "authenticated") return;
+
+    setUserKeyStatus("checking");
+    loadUserKeyConnection()
+      .then((connected) => {
+        if (!isMounted) return;
+        setUserKeyStatus(connected ? "connected" : "required");
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        setUserKeyStatus("required");
+        setApiKeyError(
+          error instanceof Error ? error.message : "AI 키 연결을 확인하지 못했어요."
+        );
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [sessionStatus]);
+
+  useEffect(() => {
+    let isMounted = true;
 
     if (import.meta.env.DEV) {
       setSessionStatus("authenticated");
@@ -2970,6 +3111,8 @@ export default function App() {
     const handleSessionExpired = () => {
       setSessionConsent(false);
       setSessionStatus("required");
+      setUserKeyStatus("checking");
+      setApiKeyDraft("");
       setSessionError("안전한 사용 시간이 끝났어요. 안내를 다시 확인해 주세요.");
     };
 
@@ -4269,7 +4412,12 @@ export default function App() {
       };
     });
 
-    return loadPlantInfoDraftFromServer(normalizedPlantType);
+    try {
+      return await loadPlantInfoDraftFromServer(normalizedPlantType);
+    } catch (error) {
+      reportUserOpenAiIssue(error);
+      throw error;
+    }
   };
 
   const requestPhotoAnalysis = async ({
@@ -4323,15 +4471,21 @@ export default function App() {
       };
     });
 
-    const analysis = await loadPhotoAnalysisFromServer({
-      plantName: requestPlantName,
-      plantType: requestPlantType,
-      imageData,
-      purpose,
-      previousAnalysis,
-      previousImageData,
-      previousDate,
-    });
+    let analysis: PhotoAnalysis;
+    try {
+      analysis = await loadPhotoAnalysisFromServer({
+        plantName: requestPlantName,
+        plantType: requestPlantType,
+        imageData,
+        purpose,
+        previousAnalysis,
+        previousImageData,
+        previousDate,
+      });
+    } catch (error) {
+      reportUserOpenAiIssue(error);
+      throw error;
+    }
 
     setPhotoAnalysisCache((prev) =>
       trimPhotoAnalysisCache({
@@ -4375,7 +4529,7 @@ export default function App() {
           text:
             result.source === "daily-limit"
               ? "오늘 AI 기본 정보 사용량을 모두 써서 안전 기본 초안을 넣었어요."
-              : result.warning?.includes("OPENAI_API_KEY")
+              : result.warning?.includes("API 키")
                 ? "AI 연결을 확인하지 못해서 기본 초안을 넣었어요. 잠시 후 다시 확인해 주세요."
                 : "AI 초안 생성이 잠시 실패해서 안전 기본 초안을 넣었어요. 내용 확인 후 저장해 주세요.",
         });
@@ -4385,7 +4539,18 @@ export default function App() {
           text: "AI 초안이 준비됐어요. 교사가 확인하고 저장하면 아이 답변에 사용돼요.",
         });
       }
-    } catch {
+    } catch (error) {
+      if (isUserOpenAiIssue(error)) {
+        setDraftStatus({
+          tone: "error",
+          text:
+            error instanceof Error
+              ? error.message
+              : "OpenAI API 키를 확인해 주세요.",
+        });
+        return;
+      }
+
       applyTeacherInfoDraft(createTeacherInfoDraft(normalizedPlantType));
       setDraftStatus({
         tone: "error",
@@ -5896,7 +6061,18 @@ export default function App() {
           [aiCacheKey]: aiAnswer,
         })
       );
-    } catch {
+    } catch (error) {
+      if (reportUserOpenAiIssue(error)) {
+        setChatMessages((prev) =>
+          prev.filter((chatMessage) => chatMessage.id !== messageId)
+        );
+        setSpeechError(
+          error instanceof Error ? error.message : "OpenAI 키를 확인해 주세요."
+        );
+        setFailedChatRequest({ id: messageId, question });
+        return;
+      }
+
       setChatMessages((prev) =>
         trimChatMessages(
           prev.map((chatMessage) =>
@@ -6061,7 +6237,8 @@ export default function App() {
 
       audio.load();
       await audio.play();
-    } catch {
+    } catch (error) {
+      reportUserOpenAiIssue(error);
       activeAudioIdRef.current = "";
       speakWithBrowserVoice(speechText, messageId);
     } finally {
@@ -6424,6 +6601,47 @@ export default function App() {
     installPromptRef.current = null;
   };
 
+  const saveUserOpenAiApiKey = async () => {
+    const nextKey = apiKeyDraft.trim();
+    if (!isPlausibleOpenAiApiKey(nextKey) || isApiKeySaving) {
+      setApiKeyError("sk-로 시작하는 OpenAI API 키를 확인해 주세요.");
+      return;
+    }
+
+    setIsApiKeySaving(true);
+    setApiKeyError("");
+    try {
+      await connectUserOpenAiApiKey(nextKey);
+      setUserKeyStatus("connected");
+      setApiKeyDraft("");
+    } catch (error) {
+      setUserKeyStatus("required");
+      setApiKeyError(
+        error instanceof Error ? error.message : "OpenAI API 키를 연결하지 못했어요."
+      );
+    } finally {
+      setIsApiKeySaving(false);
+    }
+  };
+
+  const removeUserOpenAiApiKey = async () => {
+    if (isApiKeySaving) return;
+    setIsApiKeySaving(true);
+    setApiKeyError("");
+    try {
+      await disconnectUserOpenAiApiKey();
+      setUserKeyStatus("required");
+      setApiKeyDraft("");
+      setShowAiUsagePanel(false);
+    } catch (error) {
+      setApiKeyError(
+        error instanceof Error ? error.message : "OpenAI API 키를 삭제하지 못했어요."
+      );
+    } finally {
+      setIsApiKeySaving(false);
+    }
+  };
+
   const renderBottomNav = () => {
     return (
       <nav style={styles.bottomNav}>
@@ -6486,9 +6704,9 @@ export default function App() {
         <div style={styles.apiKeyModalCard}>
           <div style={styles.apiKeyModalHeader}>
             <div>
-              <h2 style={styles.apiKeyModalTitle}>AI 사용량</h2>
+              <h2 style={styles.apiKeyModalTitle}>AI 키 · 사용량</h2>
               <p style={styles.apiKeyModalDesc}>
-                서버에서 API 키와 사용 한도를 안전하게 관리해요.
+                교사·보호자의 OpenAI 키와 이 기기의 사용량을 관리해요.
               </p>
             </div>
             <button
@@ -6499,6 +6717,64 @@ export default function App() {
               ×
             </button>
           </div>
+
+          <section style={styles.apiKeyEditor}>
+            <label style={styles.apiKeyLabel}>
+              OpenAI API 키
+              <input
+                type="password"
+                value={apiKeyDraft}
+                onChange={(event) => {
+                  setApiKeyDraft(event.target.value);
+                  setApiKeyError("");
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="sk-..."
+                style={styles.apiKeyInput}
+              />
+            </label>
+
+            <p style={styles.apiKeyConnectedText}>
+              {userKeyStatus === "connected"
+                ? "키가 암호화된 보안 쿠키로 연결되어 있어요."
+                : "연결된 키가 없어요."}
+            </p>
+            {apiKeyError && (
+              <p role="alert" style={styles.apiKeyErrorText}>
+                {apiKeyError}
+              </p>
+            )}
+
+            <div style={styles.apiKeyActions}>
+              {userKeyStatus === "connected" && (
+                <button
+                  type="button"
+                  style={styles.apiKeyRemoveButton}
+                  disabled={isApiKeySaving}
+                  onClick={() => void removeUserOpenAiApiKey()}
+                >
+                  키 삭제
+                </button>
+              )}
+              <button
+                type="button"
+                style={
+                  isPlausibleOpenAiApiKey(apiKeyDraft) && !isApiKeySaving
+                    ? styles.apiKeySaveButton
+                    : styles.apiKeySaveButtonDisabled
+                }
+                disabled={!isPlausibleOpenAiApiKey(apiKeyDraft) || isApiKeySaving}
+                onClick={() => void saveUserOpenAiApiKey()}
+              >
+                {isApiKeySaving
+                  ? "키 확인 중"
+                  : userKeyStatus === "connected"
+                    ? "키 교체"
+                    : "키 연결"}
+              </button>
+            </div>
+          </section>
 
           <section style={styles.apiUsagePanel}>
             <div style={styles.apiUsageHeader}>
@@ -6551,10 +6827,10 @@ export default function App() {
           </section>
 
           <div style={styles.apiKeySecurityNotice}>
-            <strong>안전한 AI 연결</strong>
+            <strong>사용자 부담 방식</strong>
             <span>
-              API 키는 브라우저와 백업 파일에 저장되지 않아요. 질문과 사진은 AI
-              처리에 필요한 순간에만 암호화된 연결로 전송돼요.
+              키는 12시간 보안 세션에만 연결되고 백업 파일에 포함되지 않아요. AI
+              비용과 사용량은 입력한 키의 OpenAI 계정에 적용돼요.
             </span>
           </div>
         </div>
@@ -6642,7 +6918,7 @@ export default function App() {
               style={styles.apiKeyButton}
               onClick={() => setShowAiUsagePanel(true)}
             >
-              AI 사용량
+              AI 키 · 사용량
             </button>
 
             <button
@@ -7187,6 +7463,103 @@ export default function App() {
               </button>
             </main>
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (userKeyStatus !== "connected") {
+    return (
+      <div style={styles.page}>
+        <div style={styles.securityFrame}>
+          <header style={styles.securityHeader}>
+            <img src={logoPath} alt="" style={styles.securityLogo} />
+            <div>
+              <h1 style={styles.securityTitle}>식물talk</h1>
+              <p style={styles.securitySubtitle}>내 OpenAI 키로 AI를 사용해요</p>
+            </div>
+          </header>
+
+          <main style={styles.securityContent}>
+            <section style={styles.securityIntro}>
+              <p style={styles.securityEyebrow}>교사·보호자 설정</p>
+              <h2 style={styles.securityHeading}>
+                {userKeyStatus === "checking"
+                  ? "AI 키 연결을 확인하고 있어요"
+                  : "OpenAI API 키를 입력해 주세요"}
+              </h2>
+              <p style={styles.securityLead}>
+                {userKeyStatus === "checking"
+                  ? "잠시만 기다려 주세요."
+                  : "AI 대화와 사진 분석 사용량은 입력한 키의 OpenAI 계정에 적용돼요. 서비스 운영자의 키나 비용은 사용하지 않아요."}
+              </p>
+            </section>
+
+            {userKeyStatus === "required" && (
+              <>
+                <section style={styles.securityFacts}>
+                  <div style={styles.securityFact}>
+                    <strong>12시간 보안 연결</strong>
+                    <span>키는 현재 사용 세션이 끝나면 자동으로 사용할 수 없게 돼요.</span>
+                  </div>
+                  <div style={styles.securityFact}>
+                    <strong>서버 DB에 저장하지 않음</strong>
+                    <span>암호화된 HttpOnly 쿠키로만 브라우저에 보관해요.</span>
+                  </div>
+                  <div style={styles.securityFactWarning}>
+                    <strong>어른이 관리</strong>
+                    <span>API 키 생성과 입력은 교사 또는 보호자가 진행해요.</span>
+                  </div>
+                </section>
+
+                <label style={styles.securityCodeLabel}>
+                  OpenAI API 키
+                  <input
+                    type="password"
+                    value={apiKeyDraft}
+                    onChange={(event) => {
+                      setApiKeyDraft(event.target.value);
+                      setApiKeyError("");
+                    }}
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="sk-..."
+                    style={styles.securityCodeInput}
+                  />
+                </label>
+
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={styles.securityApiKeyLink}
+                >
+                  OpenAI API 키 만들기
+                </a>
+              </>
+            )}
+
+            {apiKeyError && (
+              <p role="alert" style={styles.securityError}>
+                {apiKeyError}
+              </p>
+            )}
+
+            {userKeyStatus === "required" && (
+              <button
+                type="button"
+                style={
+                  isPlausibleOpenAiApiKey(apiKeyDraft) && !isApiKeySaving
+                    ? styles.securityPrimaryButton
+                    : styles.securityPrimaryButtonDisabled
+                }
+                disabled={!isPlausibleOpenAiApiKey(apiKeyDraft) || isApiKeySaving}
+                onClick={() => void saveUserOpenAiApiKey()}
+              >
+                {isApiKeySaving ? "키 확인 중" : "내 키로 시작하기"}
+              </button>
+            )}
+          </main>
         </div>
       </div>
     );
@@ -9906,6 +10279,16 @@ const styles: Record<string, CSSProperties> = {
     outline: "none",
   },
 
+  securityApiKeyLink: {
+    display: "inline-block",
+    color: "#2D7045",
+    fontSize: "13px",
+    lineHeight: 1.4,
+    fontWeight: 900,
+    textDecoration: "underline",
+    textUnderlineOffset: "3px",
+  },
+
   securityConsentLabel: {
     padding: "12px",
     border: "1px solid #C7D8E1",
@@ -10328,12 +10711,14 @@ const styles: Record<string, CSSProperties> = {
     apiKeyModalCard: {
       width: "min(520px, 100%)",
       background: "#FFFFFF",
-      borderRadius: "24px",
+      borderRadius: "8px",
       padding: "24px",
       boxShadow: "0 18px 40px rgba(0,0,0,0.12)",
       display: "flex",
       flexDirection: "column",
       gap: "16px",
+      maxHeight: "min(760px, 92vh)",
+      overflowY: "auto",
     },
 
     apiKeyModalHeader: {
@@ -10467,11 +10852,35 @@ const styles: Record<string, CSSProperties> = {
     apiKeyInput: {
       width: "100%",
       border: "1px solid #E8E1C8",
-      borderRadius: "16px",
+      borderRadius: "8px",
       padding: "14px 16px",
       fontSize: "15px",
       outline: "none",
       color: "#2F4F2F",
+    },
+
+    apiKeyEditor: {
+      display: "grid",
+      gap: "9px",
+      border: "1px solid #D8E4CD",
+      background: "#FFFFFF",
+      borderRadius: "8px",
+      padding: "13px",
+    },
+
+    apiKeyLabel: {
+      display: "grid",
+      gap: "6px",
+      color: "#2F4F2F",
+      fontSize: "13px",
+      fontWeight: 900,
+    },
+
+    apiKeyConnectedText: {
+      margin: 0,
+      color: "#5F7854",
+      fontSize: "12px",
+      fontWeight: 800,
     },
 
     apiKeySecurityNotice: {
@@ -10506,11 +10915,33 @@ const styles: Record<string, CSSProperties> = {
       border: "1px solid #E9C879",
       background: "#FFF1D6",
       color: "#8E5B2F",
-      borderRadius: "999px",
+      borderRadius: "8px",
       padding: "10px 16px",
       fontSize: "14px",
       fontWeight: 900,
       cursor: "pointer",
+    },
+
+    apiKeySaveButton: {
+      border: "1px solid #4F7A3D",
+      background: "#5F8D4E",
+      color: "#FFFFFF",
+      borderRadius: "8px",
+      padding: "10px 16px",
+      fontSize: "14px",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+
+    apiKeySaveButtonDisabled: {
+      border: "1px solid #D9DED3",
+      background: "#EEF1EA",
+      color: "#899184",
+      borderRadius: "8px",
+      padding: "10px 16px",
+      fontSize: "14px",
+      fontWeight: 900,
+      cursor: "not-allowed",
     },
 
   homeLayout: {

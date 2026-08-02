@@ -4,8 +4,13 @@
 
 ## 공개 배포 보안 구조
 
-- OpenAI API 키는 서버 환경 변수에서만 읽습니다.
-- 브라우저가 보낸 API 키는 사용하지 않습니다.
+- 교사 또는 보호자가 자신의 OpenAI API 키를 입력합니다. AI 사용량과 비용은
+  해당 OpenAI 계정에 적용되며 운영자의 공용 키는 사용하지 않습니다.
+- 입력한 키는 서버가 OpenAI에 연결 가능한지 확인한 뒤 AES-256-GCM으로
+  암호화합니다. 암호문은 현재 서명 세션에 묶인 HttpOnly, Secure,
+  SameSite=Strict 쿠키로만 브라우저에 보관합니다.
+- 키 원문과 암호문을 앱 데이터베이스에 저장하지 않으며 브라우저 JavaScript도
+  연결 후 키를 읽을 수 없습니다. 세션은 12시간 뒤 만료됩니다.
 - 선생님 또는 보호자가 개인정보 안내를 확인하면 12시간 유효한 서명 세션을
   HttpOnly, Secure, SameSite=Strict 쿠키로 발급합니다.
 - 모든 AI API는 동일 출처, 세션, 요청 크기와 Upstash Redis 사용량 제한을
@@ -22,7 +27,6 @@ Vercel 프로젝트의 `Settings > Environment Variables`에서 아래 값을
 Production, Preview, Development에 설정합니다.
 
 ```text
-OPENAI_API_KEY
 SESSION_SECRET
 UPSTASH_REDIS_REST_URL
 UPSTASH_REDIS_REST_TOKEN
@@ -46,6 +50,11 @@ Upstash Redis는 Vercel Marketplace에서 프로젝트에 연결하면 Redis URL
 `KV_REST_API_*` 또는 `UPSTASH_REDIS_REST_*` 이름으로 자동 추가됩니다. Redis
 토큰을 브라우저 코드나 `VITE_*` 환경 변수에 넣지 마세요.
 
+운영자용 `OPENAI_API_KEY` 환경 변수는 필요하지 않습니다. 이전 방식에서 등록한
+값이 있다면 Vercel에서 삭제해도 됩니다. 사용자는 교사·보호자 동의 화면 다음에
+자신의 키를 입력하며, 키는 [OpenAI API 키 페이지](https://platform.openai.com/api-keys)에서
+만들 수 있습니다.
+
 프로덕션 주소를 고정하려면 다음 값도 설정합니다.
 
 ```text
@@ -68,8 +77,11 @@ APP_ALLOWED_ORIGINS=https://plant-speaks.vercel.app
 
 서비스 전체 기본 예산은 하루 600단위이고 IP별 기본 예산은 하루 200단위입니다.
 세션 생성도 IP당 시간당 10회로 제한합니다. 모든 값은 환경 변수로 낮출 수
-있습니다. Redis가 연결되지 않은 프로덕션에서는 비용 보호를 위해 AI 요청을
-안전하게 거부합니다.
+있습니다. 이 제한은 Vercel·Redis 자원과 공개 서비스를 보호하기 위한 것이며,
+OpenAI 청구 한도는 각 사용자가 자신의 OpenAI 계정에서 별도로 관리합니다.
+Redis가 연결되지 않은 프로덕션에서는 AI 요청을 안전하게 거부합니다. 앱에
+표시되는 사용 횟수는 현재 기기의 기능별 횟수이며 OpenAI 청구 금액과 같지
+않습니다.
 
 ## 검사
 
@@ -83,4 +95,6 @@ npm audit --omit=dev
 
 `master` 브랜치를 GitHub에 push하면 연결된 Vercel 프로젝트가 자동으로
 배포됩니다. 보안 환경 변수를 변경한 경우 `Deployments > Redeploy`를 실행해야
-런타임에 반영됩니다.
+런타임에 반영됩니다. Vercel과 Upstash 무료 플랜 한도 안에서는 운영자가 별도
+호스팅 비용 없이 공유할 수 있고, OpenAI API 사용 비용은 각 키 소유자에게
+적용됩니다.

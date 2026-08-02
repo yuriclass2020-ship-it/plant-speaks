@@ -1,7 +1,9 @@
 import OpenAI from 'openai';
 import {
   authorizeAiRequest,
-  getServerOpenAiApiKey,
+  getPublicOpenAiError,
+  getRequestOpenAiApiKey,
+  logOpenAiError,
 } from '../lib/api-security.js';
 
 const DEFAULT_MODEL = 'gpt-5-mini';
@@ -75,9 +77,13 @@ export default async function handler(req, res) {
   if (!authorization) return;
 
   try {
-    const apiKey = getServerOpenAiApiKey();
+    const apiKey = getRequestOpenAiApiKey(req);
     if (!apiKey) {
-      return res.status(503).json({ ok: false, error: 'AI 연결을 준비하고 있어요.' });
+      return res.status(400).json({
+        ok: false,
+        code: 'USER_API_KEY_REQUIRED',
+        error: '교사 또는 보호자의 OpenAI API 키를 입력해 주세요.',
+      });
     }
 
     const openai = new OpenAI({ apiKey });
@@ -115,7 +121,11 @@ export default async function handler(req, res) {
       },
     });
   } catch (error) {
-    console.error('Plant info draft error:', error);
-    return res.status(500).json({ ok: false, error: 'Failed to generate plant info' });
+    logOpenAiError('Plant info draft error', error);
+    const publicError = getPublicOpenAiError(
+      error,
+      '식물 기본 정보를 만들지 못했어요. 잠시 후 다시 눌러 주세요.'
+    );
+    return res.status(publicError.status).json({ ok: false, ...publicError });
   }
 }
