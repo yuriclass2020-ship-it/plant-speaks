@@ -4,7 +4,7 @@ import {
   authorizeSessionCreation,
   createSessionToken,
   getExpiredSessionCookie,
-  getSecurityReadiness,
+  getSessionReadiness,
   getSessionCookie,
   isValidAccessCode,
   readSession,
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const readiness = getSecurityReadiness();
+  const readiness = getSessionReadiness();
   if (req.method === 'GET') {
     return res.json({
       ok: true,
