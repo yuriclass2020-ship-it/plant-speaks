@@ -115,7 +115,7 @@ type CareAction = {
 };
 
 type NavItem = {
-  screen: "home" | "observe" | "care" | "record";
+  screen: "home" | "observe" | "care" | "record" | "analysis";
   label: string;
   icon: string;
 };
@@ -189,6 +189,12 @@ type DraftStatus = {
 
 type SessionStatus = "checking" | "required" | "authenticated" | "unavailable";
 type UserKeyStatus = "checking" | "required" | "connected";
+type TeacherCredential = {
+  version: 1;
+  salt: string;
+  hash: string;
+  iterations: number;
+};
 
 type PublicSessionInfo = {
   ok: boolean;
@@ -232,6 +238,7 @@ const AI_CHAT_CACHE_STORAGE_KEY = "plant-speaks-ai-chat-cache-v3";
 const AI_CHAT_USAGE_STORAGE_KEY = "plant-speaks-ai-chat-usage-v1";
 const AI_FEATURE_USAGE_STORAGE_KEY = "plant-speaks-ai-feature-usage-v1";
 const AI_USAGE_BY_KEY_STORAGE_KEY = "plant-speaks-ai-usage-by-key-v1";
+const TEACHER_CREDENTIAL_STORAGE_KEY = "plant-speaks-teacher-credential-v1";
 const PHOTO_ANALYSIS_CACHE_STORAGE_KEY =
   "plant-speaks-photo-analysis-cache-v1";
 const MAX_CHAT_MESSAGES = 80;
@@ -251,6 +258,8 @@ const API_PHOTO_ANALYSIS_URL = "/api/photo-analysis";
 const API_CHAT_ANSWER_URL = "/api/chat-answer";
 const API_USER_KEY_URL = "/api/user-key";
 const SESSION_EXPIRED_EVENT = "plant-talk-session-expired";
+const TEACHER_PASSWORD_ITERATIONS = 210000;
+const TEACHER_UNLOCK_DURATION_MS = 10 * 60 * 1000;
 const CARE_REACTION_SPEECH: Record<"waterCount" | "sunCount", string> = {
   waterCount: "고마워. 시원해!",
   sunCount: "따뜻해. 고마워!",
@@ -274,6 +283,66 @@ function getApiHeaders(): HeadersInit {
 function isPlausibleOpenAiApiKey(value: string) {
   const key = value.trim();
   return key.startsWith("sk-") && key.length >= 20 && key.length <= 512;
+}
+
+function bytesToBase64(value: Uint8Array) {
+  let binary = "";
+  value.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+async function deriveTeacherPasswordHash(
+  password: string,
+  salt: Uint8Array,
+  iterations: number
+) {
+  const saltBuffer = new Uint8Array(salt.byteLength);
+  saltBuffer.set(salt);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: saltBuffer.buffer,
+      iterations,
+    },
+    key,
+    256
+  );
+  return bytesToBase64(new Uint8Array(bits));
+}
+
+function loadTeacherCredential(): TeacherCredential | null {
+  try {
+    const parsed = JSON.parse(
+      localStorage.getItem(TEACHER_CREDENTIAL_STORAGE_KEY) || "null"
+    ) as TeacherCredential | null;
+    if (
+      parsed?.version !== 1 ||
+      !parsed.salt ||
+      !parsed.hash ||
+      parsed.iterations < 100000
+    ) {
+      return null;
+    }
+    base64ToBytes(parsed.salt);
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 function handleSecureApiResponse(response: Response, code?: string) {
@@ -2494,6 +2563,17 @@ export default function App() {
   const [isSessionStarting, setIsSessionStarting] = useState(false);
   const [accessCodeRequired, setAccessCodeRequired] = useState(false);
   const [showAiUsagePanel, setShowAiUsagePanel] = useState(false);
+  const [teacherCredential, setTeacherCredential] =
+    useState<TeacherCredential | null>(loadTeacherCredential);
+  const [teacherUnlockedUntil, setTeacherUnlockedUntil] = useState(0);
+  const [showTeacherGate, setShowTeacherGate] = useState(false);
+  const [teacherGateTitle, setTeacherGateTitle] = useState("교사 확인");
+  const [teacherPassword, setTeacherPassword] = useState("");
+  const [teacherPasswordConfirm, setTeacherPasswordConfirm] = useState("");
+  const [teacherAuthError, setTeacherAuthError] = useState("");
+  const [isTeacherAuthWorking, setIsTeacherAuthWorking] = useState(false);
+  const [teacherFailedAttempts, setTeacherFailedAttempts] = useState(0);
+  const [teacherLockedUntil, setTeacherLockedUntil] = useState(0);
   const [isListening, setIsListening] = useState(false);
   const [speechError, setSpeechError] = useState("");
   const [failedChatRequest, setFailedChatRequest] =
@@ -2518,7 +2598,9 @@ export default function App() {
     }
     setApiKeyDraft("");
     setApiKeyError(message);
-    setShowAiUsagePanel(true);
+    if (teacherUnlockedUntil > Date.now()) {
+      setShowAiUsagePanel(true);
+    }
     return true;
   };
   const [waterPromptDismissedDateKey, setWaterPromptDismissedDateKey] =
@@ -2541,6 +2623,7 @@ export default function App() {
   const activeAudioIdRef = useRef("");
   const audioUrlCacheRef = useRef<Record<string, string>>({});
   const waterPromptSoundDateRef = useRef("");
+  const pendingTeacherActionRef = useRef<(() => void) | null>(null);
 
   const [plant, setPlant] = useState<Plant | null>(null);
   const [isStateLoaded, setIsStateLoaded] = useState(false);
@@ -3122,6 +3205,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (teacherUnlockedUntil <= Date.now()) return;
+    const timer = window.setTimeout(() => {
+      setTeacherUnlockedUntil(0);
+      setShowAiUsagePanel(false);
+      setApiKeyDraft("");
+      setScreen((currentScreen) =>
+        ["analysis", "answerTest", "register"].includes(currentScreen)
+          ? "home"
+          : currentScreen
+      );
+    }, teacherUnlockedUntil - Date.now());
+    return () => window.clearTimeout(timer);
+  }, [teacherUnlockedUntil]);
+
+  useEffect(() => {
     return () => {
       recognitionRef.current?.stop();
 
@@ -3384,6 +3482,142 @@ export default function App() {
       JSON.stringify(knownChildNames)
     );
   }, [knownChildNameSignature]);
+
+  const isTeacherUnlocked = teacherUnlockedUntil > Date.now();
+
+  const requestTeacherAccess = (action: () => void, title = "교사 확인") => {
+    if (teacherUnlockedUntil > Date.now()) {
+      action();
+      return;
+    }
+    pendingTeacherActionRef.current = action;
+    setTeacherGateTitle(title);
+    setTeacherPassword("");
+    setTeacherAuthError("");
+    setShowTeacherGate(true);
+  };
+
+  const closeTeacherGate = () => {
+    pendingTeacherActionRef.current = null;
+    setShowTeacherGate(false);
+    setTeacherPassword("");
+    setTeacherAuthError("");
+  };
+
+  const createTeacherPassword = async () => {
+    if (isTeacherAuthWorking) return;
+    if (teacherPassword.length < 6) {
+      setTeacherAuthError("6자리 이상으로 입력해 주세요.");
+      return;
+    }
+    if (teacherPassword !== teacherPasswordConfirm) {
+      setTeacherAuthError("두 비밀번호가 같지 않아요.");
+      return;
+    }
+
+    setIsTeacherAuthWorking(true);
+    setTeacherAuthError("");
+    try {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const credential: TeacherCredential = {
+        version: 1,
+        salt: bytesToBase64(salt),
+        hash: await deriveTeacherPasswordHash(
+          teacherPassword,
+          salt,
+          TEACHER_PASSWORD_ITERATIONS
+        ),
+        iterations: TEACHER_PASSWORD_ITERATIONS,
+      };
+      localStorage.setItem(
+        TEACHER_CREDENTIAL_STORAGE_KEY,
+        JSON.stringify(credential)
+      );
+      setTeacherCredential(credential);
+      setTeacherUnlockedUntil(Date.now() + TEACHER_UNLOCK_DURATION_MS);
+      setTeacherPassword("");
+      setTeacherPasswordConfirm("");
+    } catch {
+      setTeacherAuthError("교사 비밀번호를 안전하게 저장하지 못했어요.");
+    } finally {
+      setIsTeacherAuthWorking(false);
+    }
+  };
+
+  const unlockTeacherAccess = async () => {
+    if (!teacherCredential || isTeacherAuthWorking) return;
+    const now = Date.now();
+    if (teacherLockedUntil > now) {
+      const seconds = Math.ceil((teacherLockedUntil - now) / 1000);
+      setTeacherAuthError(`${seconds}초 뒤에 다시 시도해 주세요.`);
+      return;
+    }
+    if (!teacherPassword) {
+      setTeacherAuthError("교사 비밀번호를 입력해 주세요.");
+      return;
+    }
+
+    setIsTeacherAuthWorking(true);
+    setTeacherAuthError("");
+    try {
+      const hash = await deriveTeacherPasswordHash(
+        teacherPassword,
+        base64ToBytes(teacherCredential.salt),
+        teacherCredential.iterations
+      );
+      if (hash !== teacherCredential.hash) {
+        const nextAttempts = teacherFailedAttempts + 1;
+        if (nextAttempts >= 5) {
+          setTeacherFailedAttempts(0);
+          setTeacherLockedUntil(Date.now() + 30 * 1000);
+          setTeacherAuthError("입력 횟수가 많아요. 30초 뒤에 다시 시도해 주세요.");
+        } else {
+          setTeacherFailedAttempts(nextAttempts);
+          setTeacherAuthError(`비밀번호가 맞지 않아요. ${5 - nextAttempts}번 남았어요.`);
+        }
+        return;
+      }
+
+      setTeacherFailedAttempts(0);
+      setTeacherLockedUntil(0);
+      setTeacherUnlockedUntil(Date.now() + TEACHER_UNLOCK_DURATION_MS);
+      setShowTeacherGate(false);
+      setTeacherPassword("");
+      const pendingAction = pendingTeacherActionRef.current;
+      pendingTeacherActionRef.current = null;
+      pendingAction?.();
+    } catch {
+      setTeacherAuthError("교사 비밀번호를 확인하지 못했어요.");
+    } finally {
+      setIsTeacherAuthWorking(false);
+    }
+  };
+
+  const lockTeacherTools = () => {
+    setTeacherUnlockedUntil(0);
+    setShowAiUsagePanel(false);
+    setApiKeyDraft("");
+    setScreen((currentScreen) =>
+      ["analysis", "answerTest", "register"].includes(currentScreen)
+        ? "home"
+        : currentScreen
+    );
+  };
+
+  const changeTeacherPassword = () => {
+    if (!isTeacherUnlocked) return;
+    const confirmed = window.confirm(
+      "교사 비밀번호를 새로 설정할까요? 현재 비밀번호는 삭제돼요."
+    );
+    if (!confirmed) return;
+    localStorage.removeItem(TEACHER_CREDENTIAL_STORAGE_KEY);
+    setTeacherCredential(null);
+    setTeacherUnlockedUntil(0);
+    setTeacherPassword("");
+    setTeacherPasswordConfirm("");
+    setTeacherAuthError("");
+    setShowAiUsagePanel(false);
+  };
 
   const addChildToRoster = () => {
     const newChildName = window.prompt("추가할 아이 이름을 입력해 주세요.");
@@ -6642,6 +6876,77 @@ export default function App() {
     }
   };
 
+  const renderTeacherGate = () => {
+    if (!showTeacherGate) return null;
+    const isTemporarilyLocked = teacherLockedUntil > Date.now();
+
+    return (
+      <div style={styles.teacherGateBackdrop} role="presentation">
+        <section
+          style={styles.teacherGateCard}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="teacher-gate-title"
+        >
+          <div style={styles.teacherGateHeader}>
+            <div>
+              <p style={styles.teacherGateEyebrow}>교사 전용</p>
+              <h2 id="teacher-gate-title" style={styles.teacherGateTitle}>
+                {teacherGateTitle}
+              </h2>
+            </div>
+            <button
+              type="button"
+              style={styles.teacherGateCloseButton}
+              onClick={closeTeacherGate}
+              aria-label="닫기"
+            >
+              ×
+            </button>
+          </div>
+
+          <label style={styles.teacherGateLabel}>
+            교사 비밀번호
+            <input
+              type="password"
+              value={teacherPassword}
+              onChange={(event) => {
+                setTeacherPassword(event.target.value);
+                setTeacherAuthError("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void unlockTeacherAccess();
+              }}
+              autoComplete="current-password"
+              autoFocus
+              style={styles.teacherGateInput}
+            />
+          </label>
+
+          {teacherAuthError && (
+            <p role="alert" style={styles.teacherGateError}>
+              {teacherAuthError}
+            </p>
+          )}
+
+          <button
+            type="button"
+            disabled={isTeacherAuthWorking || isTemporarilyLocked}
+            style={
+              !isTeacherAuthWorking && !isTemporarilyLocked
+                ? styles.teacherGatePrimaryButton
+                : styles.teacherGatePrimaryButtonDisabled
+            }
+            onClick={() => void unlockTeacherAccess()}
+          >
+            {isTeacherAuthWorking ? "확인 중" : "잠금 해제"}
+          </button>
+          <p style={styles.teacherGateHint}>잠금은 10분 뒤 자동으로 다시 적용돼요.</p>
+        </section>
+      </div>
+    );
+  };
+
   const renderBottomNav = () => {
     return (
       <nav style={styles.bottomNav}>
@@ -6653,7 +6958,16 @@ export default function App() {
               key={item.screen}
               type="button"
               style={isActive ? styles.navItemActive : styles.navItem}
-              onClick={() => setScreen(item.screen)}
+              onClick={() => {
+                if (item.screen === "analysis") {
+                  requestTeacherAccess(
+                    () => setScreen("analysis"),
+                    "아이 분석 열기"
+                  );
+                } else {
+                  setScreen(item.screen);
+                }
+              }}
             >
               <img src={item.icon} alt={item.label} style={styles.navLogo} />
               <span>{item.label}</span>
@@ -6665,7 +6979,7 @@ export default function App() {
   };
 
   const renderAiUsagePanel = () => {
-    if (!showAiUsagePanel) return null;
+    if (!showAiUsagePanel || !isTeacherUnlocked) return null;
 
     const currentChatUsage = normalizeAiChatUsage(aiChatUsage, todayKey);
     const currentFeatureUsage = normalizeAiFeatureUsage(
@@ -6832,6 +7146,13 @@ export default function App() {
               키는 12시간 보안 세션에만 연결되고 백업 파일에 포함되지 않아요. AI
               비용과 사용량은 입력한 키의 OpenAI 계정에 적용돼요.
             </span>
+            <button
+              type="button"
+              style={styles.teacherPasswordChangeButton}
+              onClick={changeTeacherPassword}
+            >
+              교사 비밀번호 변경
+            </button>
           </div>
         </div>
       </div>
@@ -6890,12 +7211,14 @@ export default function App() {
                       onClick={() => {
                         const trimmedSearchText = childSearchText.trim();
                         if (!trimmedSearchText) return;
-                        const nextRoster = getUniqueChildNames([
-                          ...knownChildNames,
-                          trimmedSearchText,
-                        ]);
-                        setChildRoster(nextRoster);
-                        selectChildName(trimmedSearchText);
+                        requestTeacherAccess(() => {
+                          const nextRoster = getUniqueChildNames([
+                            ...knownChildNames,
+                            trimmedSearchText,
+                          ]);
+                          setChildRoster(nextRoster);
+                          selectChildName(trimmedSearchText);
+                        }, "아이 명단에 추가하기");
                       }}
                     >
                       “{childSearchText}” 추가
@@ -6916,10 +7239,25 @@ export default function App() {
             <button
               type="button"
               style={styles.apiKeyButton}
-              onClick={() => setShowAiUsagePanel(true)}
+              onClick={() =>
+                requestTeacherAccess(
+                  () => setShowAiUsagePanel(true),
+                  "AI 키와 사용량 열기"
+                )
+              }
             >
               AI 키 · 사용량
             </button>
+
+            {isTeacherUnlocked && (
+              <button
+                type="button"
+                style={styles.teacherLockButton}
+                onClick={lockTeacherTools}
+              >
+                교사 잠금
+              </button>
+            )}
 
             <button
               type="button"
@@ -6935,6 +7273,7 @@ export default function App() {
         </header>
 
         {renderAiUsagePanel()}
+        {renderTeacherGate()}
       </>
     );
   };
@@ -6990,7 +7329,12 @@ export default function App() {
           <button
             type="button"
             style={styles.recordDeleteButton}
-            onClick={() => deleteRecord(record.id)}
+            onClick={() =>
+              requestTeacherAccess(
+                () => deleteRecord(record.id),
+                "관찰 기록 삭제하기"
+              )
+            }
           >
             삭제
           </button>
@@ -7468,6 +7812,106 @@ export default function App() {
     );
   }
 
+  if (!teacherCredential) {
+    const canCreateTeacherPassword =
+      teacherPassword.length >= 6 &&
+      teacherPassword === teacherPasswordConfirm &&
+      !isTeacherAuthWorking;
+
+    return (
+      <div style={styles.page}>
+        <div style={styles.securityFrame}>
+          <header style={styles.securityHeader}>
+            <img src={logoPath} alt="" style={styles.securityLogo} />
+            <div>
+              <h1 style={styles.securityTitle}>식물talk</h1>
+              <p style={styles.securitySubtitle}>교사 전용 기능을 보호해요</p>
+            </div>
+          </header>
+
+          <main style={styles.securityContent}>
+            <section style={styles.securityIntro}>
+              <p style={styles.securityEyebrow}>최초 1회 설정</p>
+              <h2 style={styles.securityHeading}>교사 비밀번호를 만들어 주세요</h2>
+              <p style={styles.securityLead}>
+                분석, AI 키, 식물·아이 명단 관리와 삭제 기능을 아이가 열지 못하게
+                보호해요.
+              </p>
+            </section>
+
+            <section style={styles.securityFacts}>
+              <div style={styles.securityFact}>
+                <strong>원문 저장 안 함</strong>
+                <span>비밀번호는 강한 해시로 바꿔 이 브라우저에만 저장해요.</span>
+              </div>
+              <div style={styles.securityFact}>
+                <strong>10분 자동 잠금</strong>
+                <span>교사 기능을 연 뒤 10분이 지나면 다시 잠겨요.</span>
+              </div>
+              <div style={styles.securityFactWarning}>
+                <strong>6자리 이상</strong>
+                <span>아이가 추측하기 어려운 비밀번호를 사용해 주세요.</span>
+              </div>
+            </section>
+
+            <div style={styles.teacherSetupFields}>
+              <label style={styles.securityCodeLabel}>
+                교사 비밀번호
+                <input
+                  type="password"
+                  value={teacherPassword}
+                  onChange={(event) => {
+                    setTeacherPassword(event.target.value);
+                    setTeacherAuthError("");
+                  }}
+                  autoComplete="new-password"
+                  style={styles.securityCodeInput}
+                />
+              </label>
+              <label style={styles.securityCodeLabel}>
+                비밀번호 다시 입력
+                <input
+                  type="password"
+                  value={teacherPasswordConfirm}
+                  onChange={(event) => {
+                    setTeacherPasswordConfirm(event.target.value);
+                    setTeacherAuthError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && canCreateTeacherPassword) {
+                      void createTeacherPassword();
+                    }
+                  }}
+                  autoComplete="new-password"
+                  style={styles.securityCodeInput}
+                />
+              </label>
+            </div>
+
+            {teacherAuthError && (
+              <p role="alert" style={styles.securityError}>
+                {teacherAuthError}
+              </p>
+            )}
+
+            <button
+              type="button"
+              disabled={!canCreateTeacherPassword}
+              style={
+                canCreateTeacherPassword
+                  ? styles.securityPrimaryButton
+                  : styles.securityPrimaryButtonDisabled
+              }
+              onClick={() => void createTeacherPassword()}
+            >
+              {isTeacherAuthWorking ? "안전하게 저장 중" : "교사 비밀번호 설정"}
+            </button>
+          </main>
+        </div>
+      </div>
+    );
+  }
+
   if (userKeyStatus !== "connected") {
     return (
       <div style={styles.page}>
@@ -7486,16 +7930,20 @@ export default function App() {
               <h2 style={styles.securityHeading}>
                 {userKeyStatus === "checking"
                   ? "AI 키 연결을 확인하고 있어요"
-                  : "OpenAI API 키를 입력해 주세요"}
+                  : !isTeacherUnlocked
+                    ? "교사 비밀번호를 확인해 주세요"
+                    : "OpenAI API 키를 입력해 주세요"}
               </h2>
               <p style={styles.securityLead}>
                 {userKeyStatus === "checking"
                   ? "잠시만 기다려 주세요."
-                  : "AI 대화와 사진 분석 사용량은 입력한 키의 OpenAI 계정에 적용돼요. 서비스 운영자의 키나 비용은 사용하지 않아요."}
+                  : !isTeacherUnlocked
+                    ? "API 키 설정은 교사 또는 보호자만 열 수 있어요."
+                    : "AI 대화와 사진 분석 사용량은 입력한 키의 OpenAI 계정에 적용돼요. 서비스 운영자의 키나 비용은 사용하지 않아요."}
               </p>
             </section>
 
-            {userKeyStatus === "required" && (
+            {userKeyStatus === "required" && isTeacherUnlocked && (
               <>
                 <section style={styles.securityFacts}>
                   <div style={styles.securityFact}>
@@ -7539,13 +7987,13 @@ export default function App() {
               </>
             )}
 
-            {apiKeyError && (
+            {apiKeyError && isTeacherUnlocked && (
               <p role="alert" style={styles.securityError}>
                 {apiKeyError}
               </p>
             )}
 
-            {userKeyStatus === "required" && (
+            {userKeyStatus === "required" && isTeacherUnlocked && (
               <button
                 type="button"
                 style={
@@ -7559,7 +8007,20 @@ export default function App() {
                 {isApiKeySaving ? "키 확인 중" : "내 키로 시작하기"}
               </button>
             )}
+
+            {userKeyStatus === "required" && !isTeacherUnlocked && (
+              <button
+                type="button"
+                style={styles.securityPrimaryButton}
+                onClick={() =>
+                  requestTeacherAccess(() => undefined, "AI 키 설정 열기")
+                }
+              >
+                교사 비밀번호 입력
+              </button>
+            )}
           </main>
+          {renderTeacherGate()}
         </div>
       </div>
     );
@@ -7651,15 +8112,17 @@ export default function App() {
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (!window.confirm(`${childName} 아이를 삭제할까요?`)) return;
-                          const nextRoster = knownChildNames.filter(n => n !== childName);
-                          setChildRoster(nextRoster);
-                          localStorage.setItem(CHILD_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster));
-                          if (currentChildName === childName) {
-                            const next = nextRoster[0] ?? "";
-                            setCurrentChildName(next);
-                            localStorage.setItem(CHILD_STORAGE_KEY, next);
-                          }
+                          requestTeacherAccess(() => {
+                            if (!window.confirm(`${childName} 아이를 삭제할까요?`)) return;
+                            const nextRoster = knownChildNames.filter(n => n !== childName);
+                            setChildRoster(nextRoster);
+                            localStorage.setItem(CHILD_ROSTER_STORAGE_KEY, JSON.stringify(nextRoster));
+                            if (currentChildName === childName) {
+                              const next = nextRoster[0] ?? "";
+                              setCurrentChildName(next);
+                              localStorage.setItem(CHILD_STORAGE_KEY, next);
+                            }
+                          }, "아이 명단에서 삭제하기");
                         }}
                       >
                         ×
@@ -7678,7 +8141,9 @@ export default function App() {
               <button
                 type="button"
                 style={styles.primaryButton}
-                onClick={addChildToRoster}
+                onClick={() =>
+                  requestTeacherAccess(addChildToRoster, "아이 명단에 추가하기")
+                }
               >
                 아이 추가
               </button>
@@ -7696,6 +8161,7 @@ export default function App() {
           </section>
 
           {renderWaterPrompt()}
+          {renderTeacherGate()}
         </div>
       </div>
     );
@@ -9037,7 +9503,9 @@ export default function App() {
                 <button
                   type="button"
                   style={styles.resetButton}
-                  onClick={resetTodayCounts}
+                  onClick={() =>
+                    requestTeacherAccess(resetTodayCounts, "오늘 횟수 초기화하기")
+                  }
                 >
                   오늘 횟수 초기화
                 </button>
@@ -9908,7 +10376,12 @@ export default function App() {
                     <button
                       type="button"
                       style={styles.editPlantButton}
-                      onClick={() => setScreen("register")}
+                      onClick={() =>
+                        requestTeacherAccess(
+                          () => setScreen("register"),
+                          plant ? "식물 정보 수정하기" : "식물 등록하기"
+                        )
+                      }
                     >
                       {plant ? "수정" : "등록"}
                     </button>
@@ -10318,6 +10791,13 @@ const styles: Record<string, CSSProperties> = {
     fontSize: "13px",
     lineHeight: 1.4,
     fontWeight: 800,
+  },
+
+  teacherSetupFields: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "12px",
+    marginTop: "14px",
   },
 
   securityPrimaryButton: {
@@ -10918,6 +11398,150 @@ const styles: Record<string, CSSProperties> = {
       borderRadius: "8px",
       padding: "10px 16px",
       fontSize: "14px",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+
+    teacherLockButton: {
+      border: "1px solid #E0C778",
+      background: "#FFF5D7",
+      color: "#6F5717",
+      borderRadius: "999px",
+      padding: "10px 14px",
+      fontSize: "13px",
+      fontWeight: 900,
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+    },
+
+    teacherGateBackdrop: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 10001,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "18px",
+      background: "rgba(30, 45, 27, 0.38)",
+    },
+
+    teacherGateCard: {
+      width: "min(400px, 100%)",
+      maxHeight: "calc(100dvh - 36px)",
+      overflowY: "auto",
+      border: "1px solid #D8CFB8",
+      borderRadius: "8px",
+      background: "#FFFFFF",
+      boxShadow: "0 18px 42px rgba(35, 55, 31, 0.22)",
+      padding: "20px",
+      display: "grid",
+      gap: "14px",
+    },
+
+    teacherGateHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: "12px",
+    },
+
+    teacherGateEyebrow: {
+      margin: "0 0 4px",
+      color: "#A06B16",
+      fontSize: "12px",
+      lineHeight: 1.3,
+      fontWeight: 900,
+    },
+
+    teacherGateTitle: {
+      margin: 0,
+      color: "#23492E",
+      fontSize: "20px",
+      lineHeight: 1.3,
+      fontWeight: 950,
+    },
+
+    teacherGateCloseButton: {
+      width: "36px",
+      height: "36px",
+      flexShrink: 0,
+      border: "1px solid #DED8C7",
+      borderRadius: "50%",
+      background: "#F7F5ED",
+      color: "#526A46",
+      fontSize: "22px",
+      lineHeight: 1,
+      cursor: "pointer",
+    },
+
+    teacherGateLabel: {
+      display: "grid",
+      gap: "7px",
+      color: "#405A38",
+      fontSize: "13px",
+      fontWeight: 900,
+    },
+
+    teacherGateInput: {
+      width: "100%",
+      minHeight: "46px",
+      border: "1px solid #CFC7B2",
+      borderRadius: "8px",
+      background: "#FFFDF8",
+      color: "#23492E",
+      padding: "10px 12px",
+      fontSize: "16px",
+      outline: "none",
+    },
+
+    teacherGateError: {
+      margin: 0,
+      color: "#9A3F2D",
+      fontSize: "13px",
+      lineHeight: 1.45,
+      fontWeight: 800,
+    },
+
+    teacherGatePrimaryButton: {
+      minHeight: "46px",
+      border: "1px solid #4F7A3D",
+      borderRadius: "8px",
+      background: "#5F8D4E",
+      color: "#FFFFFF",
+      fontSize: "15px",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+
+    teacherGatePrimaryButtonDisabled: {
+      minHeight: "46px",
+      border: "1px solid #D9DED3",
+      borderRadius: "8px",
+      background: "#EEF1EA",
+      color: "#899184",
+      fontSize: "15px",
+      fontWeight: 900,
+      cursor: "not-allowed",
+    },
+
+    teacherGateHint: {
+      margin: 0,
+      color: "#718067",
+      fontSize: "12px",
+      lineHeight: 1.4,
+      textAlign: "center",
+      fontWeight: 750,
+    },
+
+    teacherPasswordChangeButton: {
+      justifySelf: "start",
+      marginTop: "6px",
+      border: "1px solid #D9CBAA",
+      borderRadius: "8px",
+      background: "#FFFFFF",
+      color: "#526A46",
+      padding: "8px 11px",
+      fontSize: "12px",
       fontWeight: 900,
       cursor: "pointer",
     },
@@ -12499,7 +13123,6 @@ const styles: Record<string, CSSProperties> = {
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    gap: "4px",
     gap: "6px",
   },
 
