@@ -190,10 +190,12 @@ type DraftStatus = {
 type SessionStatus = "checking" | "required" | "authenticated" | "unavailable";
 type UserKeyStatus = "checking" | "required" | "connected";
 type TeacherCredential = {
-  version: 1;
+  version: 1 | 2;
   salt: string;
   hash: string;
   iterations: number;
+  recoverySalt?: string;
+  recoveryHash?: string;
 };
 
 type PublicSessionInfo = {
@@ -260,6 +262,7 @@ const API_USER_KEY_URL = "/api/user-key";
 const SESSION_EXPIRED_EVENT = "plant-talk-session-expired";
 const TEACHER_PASSWORD_ITERATIONS = 210000;
 const TEACHER_UNLOCK_DURATION_MS = 10 * 60 * 1000;
+const TEACHER_RECOVERY_CODE_DIGITS = 12;
 const CARE_REACTION_SPEECH: Record<"waterCount" | "sunCount", string> = {
   waterCount: "고마워. 시원해!",
   sunCount: "따뜻해. 고마워!",
@@ -325,20 +328,76 @@ async function deriveTeacherPasswordHash(
   return bytesToBase64(new Uint8Array(bits));
 }
 
+function normalizeTeacherRecoveryCode(value: string) {
+  return value.replace(/\D/g, "").slice(0, TEACHER_RECOVERY_CODE_DIGITS);
+}
+
+function formatTeacherRecoveryCode(value: string) {
+  return normalizeTeacherRecoveryCode(value).replace(/(\d{4})(?=\d)/g, "$1-");
+}
+
+function createTeacherRecoveryCode() {
+  const digits: number[] = [];
+  while (digits.length < TEACHER_RECOVERY_CODE_DIGITS) {
+    const randomValues = crypto.getRandomValues(new Uint8Array(16));
+    randomValues.forEach((value) => {
+      if (value < 250 && digits.length < TEACHER_RECOVERY_CODE_DIGITS) {
+        digits.push(value % 10);
+      }
+    });
+  }
+  return formatTeacherRecoveryCode(digits.join(""));
+}
+
+async function createTeacherCredentialWithRecovery(password: string) {
+  const passwordSalt = crypto.getRandomValues(new Uint8Array(16));
+  const recoverySalt = crypto.getRandomValues(new Uint8Array(16));
+  const recoveryCode = createTeacherRecoveryCode();
+  const credential: TeacherCredential = {
+    version: 2,
+    salt: bytesToBase64(passwordSalt),
+    hash: await deriveTeacherPasswordHash(
+      password,
+      passwordSalt,
+      TEACHER_PASSWORD_ITERATIONS
+    ),
+    iterations: TEACHER_PASSWORD_ITERATIONS,
+    recoverySalt: bytesToBase64(recoverySalt),
+    recoveryHash: await deriveTeacherPasswordHash(
+      normalizeTeacherRecoveryCode(recoveryCode),
+      recoverySalt,
+      TEACHER_PASSWORD_ITERATIONS
+    ),
+  };
+  return { credential, recoveryCode };
+}
+
+function hasTeacherRecoveryCode(credential: TeacherCredential | null) {
+  return Boolean(
+    credential?.version === 2 &&
+      credential.recoverySalt &&
+      credential.recoveryHash
+  );
+}
+
 function loadTeacherCredential(): TeacherCredential | null {
   try {
     const parsed = JSON.parse(
       localStorage.getItem(TEACHER_CREDENTIAL_STORAGE_KEY) || "null"
     ) as TeacherCredential | null;
     if (
-      parsed?.version !== 1 ||
+      !parsed ||
+      ![1, 2].includes(parsed.version) ||
       !parsed.salt ||
       !parsed.hash ||
-      parsed.iterations < 100000
+      parsed.iterations < 100000 ||
+      (parsed.version === 2 &&
+        (!parsed.recoverySalt || !parsed.recoveryHash))
     ) {
       return null;
     }
     base64ToBytes(parsed.salt);
+    if (parsed.recoverySalt) base64ToBytes(parsed.recoverySalt);
     return parsed;
   } catch {
     return null;
@@ -2573,6 +2632,10 @@ export default function App() {
   const [teacherGateTitle, setTeacherGateTitle] = useState("교사 확인");
   const [teacherPassword, setTeacherPassword] = useState("");
   const [teacherPasswordConfirm, setTeacherPasswordConfirm] = useState("");
+  const [teacherRecoveryMode, setTeacherRecoveryMode] = useState(false);
+  const [teacherRecoveryCodeInput, setTeacherRecoveryCodeInput] = useState("");
+  const [teacherRecoveryCodeToShow, setTeacherRecoveryCodeToShow] = useState("");
+  const [teacherRecoveryCopied, setTeacherRecoveryCopied] = useState(false);
   const [teacherAuthError, setTeacherAuthError] = useState("");
   const [isTeacherAuthWorking, setIsTeacherAuthWorking] = useState(false);
   const [teacherFailedAttempts, setTeacherFailedAttempts] = useState(0);
@@ -3505,6 +3568,9 @@ export default function App() {
     pendingTeacherActionRef.current = null;
     setShowTeacherGate(false);
     setTeacherPassword("");
+    setTeacherPasswordConfirm("");
+    setTeacherRecoveryMode(false);
+    setTeacherRecoveryCodeInput("");
     setTeacherAuthError("");
   };
 
@@ -3522,17 +3588,8 @@ export default function App() {
     setIsTeacherAuthWorking(true);
     setTeacherAuthError("");
     try {
-      const salt = crypto.getRandomValues(new Uint8Array(16));
-      const credential: TeacherCredential = {
-        version: 1,
-        salt: bytesToBase64(salt),
-        hash: await deriveTeacherPasswordHash(
-          teacherPassword,
-          salt,
-          TEACHER_PASSWORD_ITERATIONS
-        ),
-        iterations: TEACHER_PASSWORD_ITERATIONS,
-      };
+      const { credential, recoveryCode } =
+        await createTeacherCredentialWithRecovery(teacherPassword);
       localStorage.setItem(
         TEACHER_CREDENTIAL_STORAGE_KEY,
         JSON.stringify(credential)
@@ -3541,10 +3598,161 @@ export default function App() {
       setTeacherUnlockedUntil(Date.now() + TEACHER_UNLOCK_DURATION_MS);
       setTeacherPassword("");
       setTeacherPasswordConfirm("");
+      setTeacherRecoveryCopied(false);
+      setTeacherRecoveryCodeToShow(recoveryCode);
     } catch {
       setTeacherAuthError("교사 비밀번호를 안전하게 저장하지 못했어요.");
     } finally {
       setIsTeacherAuthWorking(false);
+    }
+  };
+
+  const startTeacherPasswordRecovery = () => {
+    setTeacherAuthError("");
+    setTeacherPassword("");
+    setTeacherPasswordConfirm("");
+    setTeacherRecoveryCodeInput("");
+    if (!hasTeacherRecoveryCode(teacherCredential)) {
+      setTeacherAuthError(
+        "이 기기에는 복구번호가 아직 없어요. 현재 비밀번호로 연 뒤 AI 설정에서 복구번호를 만들어 주세요."
+      );
+      return;
+    }
+    setTeacherRecoveryMode(true);
+  };
+
+  const cancelTeacherPasswordRecovery = () => {
+    setTeacherRecoveryMode(false);
+    setTeacherRecoveryCodeInput("");
+    setTeacherPassword("");
+    setTeacherPasswordConfirm("");
+    setTeacherAuthError("");
+  };
+
+  const recoverTeacherPassword = async () => {
+    if (
+      !teacherCredential?.recoverySalt ||
+      !teacherCredential.recoveryHash ||
+      isTeacherAuthWorking
+    ) {
+      return;
+    }
+    const now = Date.now();
+    if (teacherLockedUntil > now) {
+      const seconds = Math.ceil((teacherLockedUntil - now) / 1000);
+      setTeacherAuthError(`${seconds}초 뒤에 다시 시도해 주세요.`);
+      return;
+    }
+    const normalizedRecoveryCode = normalizeTeacherRecoveryCode(
+      teacherRecoveryCodeInput
+    );
+    if (normalizedRecoveryCode.length !== TEACHER_RECOVERY_CODE_DIGITS) {
+      setTeacherAuthError("12자리 복구번호를 입력해 주세요.");
+      return;
+    }
+    if (teacherPassword.length < 6) {
+      setTeacherAuthError("새 비밀번호를 6자리 이상 입력해 주세요.");
+      return;
+    }
+    if (teacherPassword !== teacherPasswordConfirm) {
+      setTeacherAuthError("두 비밀번호가 같지 않아요.");
+      return;
+    }
+
+    setIsTeacherAuthWorking(true);
+    setTeacherAuthError("");
+    try {
+      const recoveryHash = await deriveTeacherPasswordHash(
+        normalizedRecoveryCode,
+        base64ToBytes(teacherCredential.recoverySalt),
+        teacherCredential.iterations
+      );
+      if (recoveryHash !== teacherCredential.recoveryHash) {
+        const nextAttempts = teacherFailedAttempts + 1;
+        if (nextAttempts >= 5) {
+          setTeacherFailedAttempts(0);
+          setTeacherLockedUntil(Date.now() + 30 * 1000);
+          setTeacherAuthError("복구번호가 맞지 않아 30초 동안 잠겼어요.");
+        } else {
+          setTeacherFailedAttempts(nextAttempts);
+          setTeacherAuthError(
+            `복구번호가 맞지 않아요. ${5 - nextAttempts}번 더 확인할 수 있어요.`
+          );
+        }
+        return;
+      }
+
+      const { credential, recoveryCode } =
+        await createTeacherCredentialWithRecovery(teacherPassword);
+      localStorage.setItem(
+        TEACHER_CREDENTIAL_STORAGE_KEY,
+        JSON.stringify(credential)
+      );
+      setTeacherCredential(credential);
+      setTeacherUnlockedUntil(Date.now() + TEACHER_UNLOCK_DURATION_MS);
+      setTeacherFailedAttempts(0);
+      setTeacherLockedUntil(0);
+      setTeacherPassword("");
+      setTeacherPasswordConfirm("");
+      setTeacherRecoveryCodeInput("");
+      setTeacherRecoveryMode(false);
+      setShowTeacherGate(false);
+      setTeacherRecoveryCopied(false);
+      setTeacherRecoveryCodeToShow(recoveryCode);
+      const pendingAction = pendingTeacherActionRef.current;
+      pendingTeacherActionRef.current = null;
+      pendingAction?.();
+    } catch {
+      setTeacherAuthError("복구번호를 확인하지 못했어요.");
+    } finally {
+      setIsTeacherAuthWorking(false);
+    }
+  };
+
+  const rotateTeacherRecoveryCode = async () => {
+    if (!isTeacherUnlocked || !teacherCredential || isTeacherAuthWorking) return;
+    const confirmed = window.confirm(
+      hasTeacherRecoveryCode(teacherCredential)
+        ? "새 복구번호를 만들까요? 기존 복구번호는 사용할 수 없게 돼요."
+        : "교사 비밀번호 복구번호를 만들까요?"
+    );
+    if (!confirmed) return;
+
+    setIsTeacherAuthWorking(true);
+    try {
+      const recoverySalt = crypto.getRandomValues(new Uint8Array(16));
+      const recoveryCode = createTeacherRecoveryCode();
+      const credential: TeacherCredential = {
+        ...teacherCredential,
+        version: 2,
+        recoverySalt: bytesToBase64(recoverySalt),
+        recoveryHash: await deriveTeacherPasswordHash(
+          normalizeTeacherRecoveryCode(recoveryCode),
+          recoverySalt,
+          teacherCredential.iterations
+        ),
+      };
+      localStorage.setItem(
+        TEACHER_CREDENTIAL_STORAGE_KEY,
+        JSON.stringify(credential)
+      );
+      setTeacherCredential(credential);
+      setTeacherRecoveryCopied(false);
+      setTeacherRecoveryCodeToShow(recoveryCode);
+    } catch {
+      window.alert("복구번호를 만들지 못했어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setIsTeacherAuthWorking(false);
+    }
+  };
+
+  const copyTeacherRecoveryCode = async () => {
+    if (!teacherRecoveryCodeToShow) return;
+    try {
+      await navigator.clipboard.writeText(teacherRecoveryCodeToShow);
+      setTeacherRecoveryCopied(true);
+    } catch {
+      setTeacherRecoveryCopied(false);
     }
   };
 
@@ -6855,6 +7063,13 @@ export default function App() {
   const renderTeacherGate = () => {
     if (!showTeacherGate) return null;
     const isTemporarilyLocked = teacherLockedUntil > Date.now();
+    const canRecoverTeacherPassword =
+      normalizeTeacherRecoveryCode(teacherRecoveryCodeInput).length ===
+        TEACHER_RECOVERY_CODE_DIGITS &&
+      teacherPassword.length >= 6 &&
+      teacherPassword === teacherPasswordConfirm &&
+      !isTeacherAuthWorking &&
+      !isTemporarilyLocked;
 
     return (
       <div style={styles.teacherGateBackdrop} role="presentation">
@@ -6866,9 +7081,11 @@ export default function App() {
         >
           <div style={styles.teacherGateHeader}>
             <div>
-              <p style={styles.teacherGateEyebrow}>교사 전용</p>
+              <p style={styles.teacherGateEyebrow}>
+                {teacherRecoveryMode ? "교사 비밀번호 복구" : "교사 전용"}
+              </p>
               <h2 id="teacher-gate-title" style={styles.teacherGateTitle}>
-                {teacherGateTitle}
+                {teacherRecoveryMode ? "새 비밀번호 만들기" : teacherGateTitle}
               </h2>
             </div>
             <button
@@ -6881,23 +7098,79 @@ export default function App() {
             </button>
           </div>
 
-          <label style={styles.teacherGateLabel}>
-            교사 비밀번호
-            <input
-              type="password"
-              value={teacherPassword}
-              onChange={(event) => {
-                setTeacherPassword(event.target.value);
-                setTeacherAuthError("");
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void unlockTeacherAccess();
-              }}
-              autoComplete="current-password"
-              autoFocus
-              style={styles.teacherGateInput}
-            />
-          </label>
+          {teacherRecoveryMode ? (
+            <>
+              <p style={styles.teacherGateDescription}>
+                처음 발급받은 12자리 복구번호와 새 비밀번호를 입력해 주세요.
+                식물과 관찰 기록은 지워지지 않아요.
+              </p>
+              <label style={styles.teacherGateLabel}>
+                복구번호
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatTeacherRecoveryCode(teacherRecoveryCodeInput)}
+                  onChange={(event) => {
+                    setTeacherRecoveryCodeInput(event.target.value);
+                    setTeacherAuthError("");
+                  }}
+                  autoComplete="one-time-code"
+                  autoFocus
+                  placeholder="0000-0000-0000"
+                  style={styles.teacherGateInput}
+                />
+              </label>
+              <label style={styles.teacherGateLabel}>
+                새 교사 비밀번호
+                <input
+                  type="password"
+                  value={teacherPassword}
+                  onChange={(event) => {
+                    setTeacherPassword(event.target.value);
+                    setTeacherAuthError("");
+                  }}
+                  autoComplete="new-password"
+                  style={styles.teacherGateInput}
+                />
+              </label>
+              <label style={styles.teacherGateLabel}>
+                새 비밀번호 다시 입력
+                <input
+                  type="password"
+                  value={teacherPasswordConfirm}
+                  onChange={(event) => {
+                    setTeacherPasswordConfirm(event.target.value);
+                    setTeacherAuthError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && canRecoverTeacherPassword) {
+                      void recoverTeacherPassword();
+                    }
+                  }}
+                  autoComplete="new-password"
+                  style={styles.teacherGateInput}
+                />
+              </label>
+            </>
+          ) : (
+            <label style={styles.teacherGateLabel}>
+              교사 비밀번호
+              <input
+                type="password"
+                value={teacherPassword}
+                onChange={(event) => {
+                  setTeacherPassword(event.target.value);
+                  setTeacherAuthError("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void unlockTeacherAccess();
+                }}
+                autoComplete="current-password"
+                autoFocus
+                style={styles.teacherGateInput}
+              />
+            </label>
+          )}
 
           {teacherAuthError && (
             <p role="alert" style={styles.teacherGateError}>
@@ -6907,17 +7180,101 @@ export default function App() {
 
           <button
             type="button"
-            disabled={isTeacherAuthWorking || isTemporarilyLocked}
+            disabled={
+              teacherRecoveryMode
+                ? !canRecoverTeacherPassword
+                : isTeacherAuthWorking || isTemporarilyLocked
+            }
             style={
-              !isTeacherAuthWorking && !isTemporarilyLocked
+              teacherRecoveryMode
+                ? canRecoverTeacherPassword
+                  ? styles.teacherGatePrimaryButton
+                  : styles.teacherGatePrimaryButtonDisabled
+                : !isTeacherAuthWorking && !isTemporarilyLocked
                 ? styles.teacherGatePrimaryButton
                 : styles.teacherGatePrimaryButtonDisabled
             }
-            onClick={() => void unlockTeacherAccess()}
+            onClick={() =>
+              void (teacherRecoveryMode
+                ? recoverTeacherPassword()
+                : unlockTeacherAccess())
+            }
           >
-            {isTeacherAuthWorking ? "확인 중" : "잠금 해제"}
+            {isTeacherAuthWorking
+              ? "확인 중"
+              : teacherRecoveryMode
+                ? "비밀번호 다시 설정"
+                : "잠금 해제"}
           </button>
-          <p style={styles.teacherGateHint}>잠금은 10분 뒤 자동으로 다시 적용돼요.</p>
+          <button
+            type="button"
+            style={styles.teacherGateLinkButton}
+            onClick={
+              teacherRecoveryMode
+                ? cancelTeacherPasswordRecovery
+                : startTeacherPasswordRecovery
+            }
+          >
+            {teacherRecoveryMode ? "비밀번호 입력으로 돌아가기" : "비밀번호를 잊었어요"}
+          </button>
+          <p style={styles.teacherGateHint}>
+            {teacherRecoveryMode
+              ? "복구가 끝나면 새 복구번호가 발급돼요."
+              : "잠금은 10분 뒤 자동으로 다시 적용돼요."}
+          </p>
+        </section>
+      </div>
+    );
+  };
+
+  const renderTeacherRecoveryCode = () => {
+    if (!teacherRecoveryCodeToShow) return null;
+
+    return (
+      <div style={styles.apiKeyGuideBackdrop} role="presentation">
+        <section
+          style={styles.teacherRecoveryCard}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="teacher-recovery-code-title"
+        >
+          <div style={styles.teacherGateHeader}>
+            <div>
+              <p style={styles.teacherGateEyebrow}>한 번만 보여 드려요</p>
+              <h2 id="teacher-recovery-code-title" style={styles.teacherGateTitle}>
+                교사 복구번호
+              </h2>
+            </div>
+          </div>
+          <p style={styles.teacherGateDescription}>
+            비밀번호를 잊었을 때 기록을 지우지 않고 새 비밀번호를 만드는 번호예요.
+            아이가 볼 수 없는 곳에 적어 두세요.
+          </p>
+          <div style={styles.teacherRecoveryCode} aria-label="교사 복구번호">
+            {teacherRecoveryCodeToShow}
+          </div>
+          <div style={styles.teacherRecoveryActions}>
+            <button
+              type="button"
+              style={styles.teacherGateSecondaryButton}
+              onClick={() => void copyTeacherRecoveryCode()}
+            >
+              {teacherRecoveryCopied ? "복사했어요" : "복구번호 복사"}
+            </button>
+            <button
+              type="button"
+              style={styles.teacherGatePrimaryButton}
+              onClick={() => {
+                setTeacherRecoveryCodeToShow("");
+                setTeacherRecoveryCopied(false);
+              }}
+            >
+              적어 두었어요
+            </button>
+          </div>
+          <p style={styles.teacherGateHint}>
+            이 번호는 다시 확인할 수 없고, 재발급하면 이전 번호는 사용할 수 없어요.
+          </p>
         </section>
       </div>
     );
@@ -7218,13 +7575,24 @@ export default function App() {
               키는 12시간 보안 세션에만 연결되고 백업 파일에 포함되지 않아요. AI
               비용과 사용량은 입력한 키의 OpenAI 계정에 적용돼요.
             </span>
-            <button
-              type="button"
-              style={styles.teacherPasswordChangeButton}
-              onClick={changeTeacherPassword}
-            >
-              교사 비밀번호 변경
-            </button>
+            <div style={styles.teacherSecurityActions}>
+              <button
+                type="button"
+                style={styles.teacherPasswordChangeButton}
+                onClick={changeTeacherPassword}
+              >
+                교사 비밀번호 변경
+              </button>
+              <button
+                type="button"
+                style={styles.teacherPasswordChangeButton}
+                onClick={() => void rotateTeacherRecoveryCode()}
+              >
+                {hasTeacherRecoveryCode(teacherCredential)
+                  ? "복구번호 재발급"
+                  : "복구번호 만들기"}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -7347,6 +7715,7 @@ export default function App() {
         {renderAiUsagePanel()}
         {renderTeacherGate()}
         {renderApiKeyGuide()}
+        {renderTeacherRecoveryCode()}
       </>
     );
   };
@@ -8094,6 +8463,7 @@ export default function App() {
           </main>
           {renderTeacherGate()}
           {renderApiKeyGuide()}
+          {renderTeacherRecoveryCode()}
         </div>
       </div>
     );
@@ -8235,6 +8605,7 @@ export default function App() {
 
           {renderWaterPrompt()}
           {renderTeacherGate()}
+          {renderTeacherRecoveryCode()}
         </div>
       </div>
     );
@@ -11572,6 +11943,14 @@ const styles: Record<string, CSSProperties> = {
       outline: "none",
     },
 
+    teacherGateDescription: {
+      margin: 0,
+      color: "#526A46",
+      fontSize: "13px",
+      lineHeight: 1.55,
+      fontWeight: 750,
+    },
+
     teacherGateError: {
       margin: 0,
       color: "#9A3F2D",
@@ -11602,6 +11981,31 @@ const styles: Record<string, CSSProperties> = {
       cursor: "not-allowed",
     },
 
+    teacherGateSecondaryButton: {
+      minHeight: "46px",
+      border: "1px solid #B9C9AD",
+      borderRadius: "8px",
+      background: "#F4F8EF",
+      color: "#31582F",
+      fontSize: "14px",
+      fontWeight: 900,
+      cursor: "pointer",
+    },
+
+    teacherGateLinkButton: {
+      justifySelf: "center",
+      border: "none",
+      background: "transparent",
+      color: "#526A46",
+      padding: "2px 4px",
+      fontSize: "13px",
+      fontWeight: 850,
+      textDecoration: "underline",
+      textUnderlineOffset: "3px",
+      cursor: "pointer",
+      fontFamily: "inherit",
+    },
+
     teacherGateHint: {
       margin: 0,
       color: "#718067",
@@ -11622,6 +12026,47 @@ const styles: Record<string, CSSProperties> = {
       fontSize: "12px",
       fontWeight: 900,
       cursor: "pointer",
+    },
+
+    teacherSecurityActions: {
+      display: "flex",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: "8px",
+    },
+
+    teacherRecoveryCard: {
+      width: "min(460px, 100%)",
+      maxHeight: "calc(100dvh - 36px)",
+      overflowY: "auto",
+      border: "1px solid #D8CFB8",
+      borderRadius: "8px",
+      background: "#FFFFFF",
+      boxShadow: "0 18px 42px rgba(35, 55, 31, 0.22)",
+      padding: "22px",
+      display: "grid",
+      gap: "16px",
+    },
+
+    teacherRecoveryCode: {
+      border: "2px solid #D9B72E",
+      borderRadius: "8px",
+      background: "#FFF6C9",
+      color: "#23492E",
+      padding: "18px 12px",
+      textAlign: "center",
+      fontSize: "clamp(22px, 6vw, 30px)",
+      lineHeight: 1.2,
+      fontWeight: 950,
+      letterSpacing: "0",
+      fontVariantNumeric: "tabular-nums",
+      overflowWrap: "anywhere",
+    },
+
+    teacherRecoveryActions: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+      gap: "9px",
     },
 
     apiKeyGuideOpenButton: {
